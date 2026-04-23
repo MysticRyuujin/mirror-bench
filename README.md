@@ -181,21 +181,37 @@ docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
 
 ### Running with auto-detection inside distro base images
 
-If you'd rather let `mirror-bench` auto-detect the host distribution (useful in
-CI containers or inside a running container of a specific distro):
+If you'd rather let `mirror-bench` auto-detect the host distribution (useful
+when testing from inside a specific distro's container), use
+[`uv`](https://docs.astral.sh/uv/) — it bootstraps its own Python 3.14
+regardless of what the distro ships. Distro-package-manager installs of
+`python3.14` don't work on current stable Ubuntu/Debian/Fedora (they ship
+older Python).
 
 ```sh
 # Inside an Ubuntu container — distro auto-detected from /etc/os-release
 docker run --rm --entrypoint bash ubuntu:24.04 -c \
-  "apt-get update -qq && apt-get install -y -qq python3.14 pipx && pipx install linux-mirror-bench && mirror-bench bench"
+  "apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null && \
+   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null && \
+   ~/.local/bin/uvx --from linux-mirror-bench mirror-bench bench"
+
+# Inside a Debian container
+docker run --rm --entrypoint bash debian:bookworm -c \
+  "apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null && \
+   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null && \
+   ~/.local/bin/uvx --from linux-mirror-bench mirror-bench bench"
 
 # Inside a Fedora container
 docker run --rm --entrypoint bash fedora:41 -c \
-  "dnf install -y python3.14 pipx && pipx install linux-mirror-bench && mirror-bench bench"
+  "dnf install -y -q curl ca-certificates >/dev/null && \
+   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null && \
+   ~/.local/bin/uvx --from linux-mirror-bench mirror-bench bench"
 
 # Inside an Arch container
 docker run --rm --entrypoint bash archlinux:latest -c \
-  "pacman -Sy --noconfirm python python-pipx && pipx install linux-mirror-bench && mirror-bench bench"
+  "pacman -Sy --noconfirm --needed curl ca-certificates >/dev/null && \
+   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null && \
+   ~/.local/bin/uvx --from linux-mirror-bench mirror-bench bench"
 ```
 
 For most uses the `ghcr.io/MysticRyuujin/mirror-bench` image is simpler — it already

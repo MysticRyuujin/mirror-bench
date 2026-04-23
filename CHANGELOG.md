@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1](https://github.com/MysticRyuujin/mirror-bench/compare/v0.1.0...v0.1.1) (2026-04-23)
+
+
+### Bug Fixes
+
+* **ci:** pin aquasecurity/trivy-action to a version that exists ([#2](https://github.com/MysticRyuujin/mirror-bench/issues/2)) ([9984cd0](https://github.com/MysticRyuujin/mirror-bench/commit/9984cd018aaaa6de34b5cdf8261752f563187858))
+
+
+### Dependencies
+
+* **actions:** bump the actions group across 1 directory with 11 updates ([#4](https://github.com/MysticRyuujin/mirror-bench/issues/4)) ([4aba2a6](https://github.com/MysticRyuujin/mirror-bench/commit/4aba2a68079d2029bf5cc387d9a6eae459d9ff2a))
+
 ## [Unreleased]
 
 ## [0.1.0] - 2026-04-23

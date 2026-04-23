@@ -1,0 +1,37 @@
+---
+name: Feature request
+description: Suggest a new capability or improvement.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the real-world use case, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Sketch the UX or API. CLI flag shapes, output columns, etc.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, related tools, etc.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope sanity-check
+      options:
+        - label: This stays read-only (does not modify /etc/apt, /etc/yum.repos.d, pacman mirrorlist, etc.)
+          required: true

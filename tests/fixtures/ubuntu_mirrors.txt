@@ -1,0 +1,3 @@
+http://mirror.example-a.org/ubuntu/
+https://mirror.example-b.org/ubuntu/
+http://mirror.example-c.org/ubuntu/

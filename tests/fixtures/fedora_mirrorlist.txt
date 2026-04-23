@@ -1,0 +1,5 @@
+# repo = fedora-41
+# arch = x86_64
+https://mirror.alpha.example.org/fedora/releases/41/Everything/x86_64/os/
+http://mirror.beta.example.org/fedora/releases/41/Everything/x86_64/os/
+https://mirror.gamma.example.org/pub/fedora/releases/41/Everything/x86_64/os/

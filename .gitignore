@@ -1,0 +1,72 @@
+# -- Python --------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+
+# -- Virtual environments -------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+__pypackages__/
+# uv.lock IS committed — it pins the exact dependency graph for reproducible
+# installs, Docker image builds, and CI. Do not gitignore it.
+
+# -- Build artifacts ------------------------------------------------------
+build/
+dist/
+wheels/
+*.manifest
+*.spec
+
+# -- Test + coverage ------------------------------------------------------
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+.hypothesis/
+.audit-reqs.txt   # transient artifact from `make security` / CI pip-audit
+
+# -- Type checking --------------------------------------------------------
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# -- Jupyter --------------------------------------------------------------
+.ipynb_checkpoints/
+
+# -- IDE / editors --------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# -- OS -------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -- Logs -----------------------------------------------------------------
+*.log
+
+# -- Secrets: never commit. Add a concrete `.env.example` if needed. ------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# -- Node (prettier pulls in node under pre-commit's cache, not here;
+#    this guards against accidental `npm init` in-tree) -------------------
+node_modules/

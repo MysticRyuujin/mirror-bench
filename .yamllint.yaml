@@ -1,0 +1,11 @@
+---
+extends: default
+
+rules:
+  # GitHub Actions YAML routinely exceeds the default 80-char limit.
+  line-length:
+    max: 120
+  # GitHub Actions YAML uses `on:` as a top-level key, which the default
+  # truthy rule would flag. Skip key-truthy checks; still flag truthy values.
+  truthy:
+    check-keys: false

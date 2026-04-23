@@ -1,0 +1,33 @@
+---
+# Release-Please — turns merged Conventional Commits on main into a
+# versioned release PR. Merging that PR creates a git tag, which the
+# `release.yml` workflow listens for to build + publish the wheel and image.
+
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      # GITHUB_TOKEN can't trigger downstream workflows (GitHub security
+      # feature). Falls back to GITHUB_TOKEN locally; CI with RELEASE_TOKEN
+      # set (a fine-grained PAT with contents:write + pull-requests:write)
+      # lets the created tag trigger release.yml automatically.
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json

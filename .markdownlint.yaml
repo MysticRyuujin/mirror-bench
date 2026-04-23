@@ -1,0 +1,7 @@
+---
+# 80 chars is too narrow for prose READMEs with command examples; tables and
+# fenced code blocks are exempted because neither can meaningfully wrap.
+MD013:
+  line_length: 120
+  code_blocks: false
+  tables: false

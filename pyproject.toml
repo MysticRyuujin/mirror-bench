@@ -1,0 +1,78 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+# PyPI name differs from the CLI name: `mirror-bench` / `mirrorbench` and close
+# neighbors hit PyPI's similarity check. The installed command + import module
+# are still `mirror-bench` / `mirror_bench` via [project.scripts] below.
+name = "linux-mirror-bench"
+version = "0.1.0"
+description = "Cross-distribution Linux package mirror benchmarking tool"
+readme = "README.md"
+license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.14"
+authors = [{ name = "MysticRyuujin", email = "MysticRyuujin@protonmail.com" }]
+keywords = ["mirror", "benchmark", "apt", "dnf", "pacman", "ubuntu", "debian", "fedora", "arch", "linux-mint"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: System :: Installation/Setup",
+]
+dependencies = [
+    "httpx[http2]>=0.27",
+    "typer>=0.12",
+    "rich>=13",
+]
+
+[project.urls]
+Homepage = "https://github.com/MysticRyuujin/mirror-bench"
+Issues = "https://github.com/MysticRyuujin/mirror-bench/issues"
+
+[project.scripts]
+mirror-bench = "mirror_bench.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mirror_bench"]
+
+[tool.ruff.lint]
+# Mainstream "sane default" set: pycodestyle + pyflakes + isort + pyupgrade +
+# bugbear + simplify + ruff's own rules + async correctness. Everything here
+# catches real issues; anything beyond is style opinion and we rely on review.
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ASYNC"]
+
+[tool.mypy]
+# mypy doesn't auto-read requires-python, so pin the version it checks against.
+python_version = "3.14"
+strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "integration: opt-in tests that hit real mirrors (requires MIRROR_BENCH_INTEGRATION=1)",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "build", "dist"]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "v$version"
+version_provider = "pep621"
+update_changelog_on_bump = true
+major_version_zero = true

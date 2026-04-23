@@ -1,0 +1,70 @@
+---
+name: Bug report
+description: Something is broken or behaves unexpectedly.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill out every section
+        so it can be triaged without a back-and-forth.
+
+  - type: input
+    id: version
+    attributes:
+      label: mirror-bench version
+      description: Output of `mirror-bench --version` or the git SHA.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: install
+    attributes:
+      label: How did you install it?
+      placeholder: "pipx / uv tool / docker pull ghcr.io/... / source"
+    validations:
+      required: true
+
+  - type: input
+    id: host
+    attributes:
+      label: Host OS + Python
+      placeholder: "Ubuntu 24.04, Python 3.14.4 / macOS 15.0 / Fedora 41 container"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      description: Include the full invocation.
+      render: shell
+      placeholder: "mirror-bench bench --distro ubuntu --country US --top 5"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Paste output, errors, or a screenshot.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: extras
+    attributes:
+      label: Anything else?
+      description: Relevant context — firewall, proxy, VPN, weird network, etc.
+    validations:
+      required: false

@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2](https://github.com/MysticRyuujin/mirror-bench/compare/v0.1.1...v0.1.2) (2026-04-23)
+
+
+### Bug Fixes
+
+* **docs:** lowercase ghcr.io references (docker pull requires lowercase) ([#8](https://github.com/MysticRyuujin/mirror-bench/issues/8)) ([31fcf57](https://github.com/MysticRyuujin/mirror-bench/commit/31fcf57239fc98eecb6df9fe8fed06400cb55dc7))
+
+
+### Documentation
+
+* add shields.io badges at top of README ([#6](https://github.com/MysticRyuujin/mirror-bench/issues/6)) ([c25c12b](https://github.com/MysticRyuujin/mirror-bench/commit/c25c12bdc36aa6af67cbbb1b8b7ec65c000d7a53))
+
 ## [0.1.1](https://github.com/MysticRyuujin/mirror-bench/compare/v0.1.0...v0.1.1) (2026-04-23)
 
 

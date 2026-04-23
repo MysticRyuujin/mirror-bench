@@ -82,12 +82,17 @@ repos:
     hooks:
       - id: prettier
         types_or: [markdown, yaml, json]
+        # CHANGELOG.md is owned by release-please (auto-generated on every
+        # release PR) — its formatting doesn't match prettier's defaults and
+        # reformatting it just creates churn on release PRs.
+        exclude: ^CHANGELOG\.md$
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.45.0
     hooks:
       - id: markdownlint
         args: [--fix]
+        exclude: ^CHANGELOG\.md$
 
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.9.0

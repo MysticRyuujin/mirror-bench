@@ -12,8 +12,6 @@ ranked table, and exits. It never touches `/etc/apt/sources.list`,
 - Modern Python: 3.14, strict typing, async I/O (`httpx` + `asyncio.TaskGroup`).
 - Shippable everywhere: `pipx`, `uv tool`, PyPI wheels, and a minimal
   multi-arch container on GHCR.
-- Hardened supply chain: PyPI OIDC trusted publishing, SLSA build provenance,
-  SBOM attached at release, no long-lived tokens.
 
 ## Table of contents
 
@@ -168,8 +166,6 @@ docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
 
 ### Machine-readable output
 
-No `-t` here — you want the raw JSON stream, not ANSI escapes.
-
 ```sh
 docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
   bench --distro arch --json | jq '.results[] | {host: .mirror.host, latency_ms, score: .composite}'
@@ -183,15 +179,15 @@ CI containers or inside a running container of a specific distro):
 ```sh
 # Inside an Ubuntu container — distro auto-detected from /etc/os-release
 docker run --rm --entrypoint bash ubuntu:24.04 -c \
-  "apt-get update -qq && apt-get install -y -qq python3.14 pipx && pipx install mirror-bench && mirror-bench bench"
+  "apt-get update -qq && apt-get install -y -qq python3.14 pipx && pipx install linux-mirror-bench && mirror-bench bench"
 
 # Inside a Fedora container
 docker run --rm --entrypoint bash fedora:41 -c \
-  "dnf install -y python3.14 pipx && pipx install mirror-bench && mirror-bench bench"
+  "dnf install -y python3.14 pipx && pipx install linux-mirror-bench && mirror-bench bench"
 
 # Inside an Arch container
 docker run --rm --entrypoint bash archlinux:latest -c \
-  "pacman -Sy --noconfirm python python-pipx && pipx install mirror-bench && mirror-bench bench"
+  "pacman -Sy --noconfirm python python-pipx && pipx install linux-mirror-bench && mirror-bench bench"
 ```
 
 For most uses the `ghcr.io/MysticRyuujin/mirror-bench` image is simpler — it already

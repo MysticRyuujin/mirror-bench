@@ -1,5 +1,13 @@
 # mirror-bench
 
+[![CI](https://github.com/MysticRyuujin/mirror-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/MysticRyuujin/mirror-bench/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/linux-mirror-bench.svg)](https://pypi.org/project/linux-mirror-bench/)
+[![Python](https://img.shields.io/pypi/pyversions/linux-mirror-bench.svg)](https://pypi.org/project/linux-mirror-bench/)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Container](https://img.shields.io/badge/ghcr.io-MysticRyuujin%2Fmirror--bench-2ea44f?logo=docker)](https://github.com/MysticRyuujin/mirror-bench/pkgs/container/mirror-bench)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
+
 A cross-distribution Linux package mirror benchmarking tool.
 
 Ranks mirrors by **latency**, **throughput**, and **security** (HTTPS / TLS 1.3 / cert validity / HTTP/2).

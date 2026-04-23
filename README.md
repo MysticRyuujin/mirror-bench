@@ -1,5 +1,13 @@
 # mirror-bench
 
+[![CI](https://github.com/MysticRyuujin/mirror-bench/actions/workflows/ci.yml/badge.svg)](https://github.com/MysticRyuujin/mirror-bench/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/linux-mirror-bench.svg)](https://pypi.org/project/linux-mirror-bench/)
+[![Python](https://img.shields.io/pypi/pyversions/linux-mirror-bench.svg)](https://pypi.org/project/linux-mirror-bench/)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Container](https://img.shields.io/badge/ghcr.io-MysticRyuujin%2Fmirror--bench-2ea44f?logo=docker)](https://github.com/MysticRyuujin/mirror-bench/pkgs/container/mirror-bench)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
+
 A cross-distribution Linux package mirror benchmarking tool.
 
 Ranks mirrors by **latency**, **throughput**, and **security** (HTTPS / TLS 1.3 / cert validity / HTTP/2).
@@ -173,21 +181,37 @@ docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
 
 ### Running with auto-detection inside distro base images
 
-If you'd rather let `mirror-bench` auto-detect the host distribution (useful in
-CI containers or inside a running container of a specific distro):
+If you'd rather let `mirror-bench` auto-detect the host distribution (useful
+when testing from inside a specific distro's container), use
+[`uv`](https://docs.astral.sh/uv/) — it bootstraps its own Python 3.14
+regardless of what the distro ships. Distro-package-manager installs of
+`python3.14` don't work on current stable Ubuntu/Debian/Fedora (they ship
+older Python).
 
 ```sh
 # Inside an Ubuntu container — distro auto-detected from /etc/os-release
 docker run --rm --entrypoint bash ubuntu:24.04 -c \
-  "apt-get update -qq && apt-get install -y -qq python3.14 pipx && pipx install linux-mirror-bench && mirror-bench bench"
+  "apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null && \
+   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null && \
+   ~/.local/bin/uvx --from linux-mirror-bench mirror-bench bench"
+
+# Inside a Debian container
+docker run --rm --entrypoint bash debian:bookworm -c \
+  "apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null && \
+   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null && \
+   ~/.local/bin/uvx --from linux-mirror-bench mirror-bench bench"
 
 # Inside a Fedora container
 docker run --rm --entrypoint bash fedora:41 -c \
-  "dnf install -y python3.14 pipx && pipx install linux-mirror-bench && mirror-bench bench"
+  "dnf install -y -q curl ca-certificates >/dev/null && \
+   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null && \
+   ~/.local/bin/uvx --from linux-mirror-bench mirror-bench bench"
 
 # Inside an Arch container
 docker run --rm --entrypoint bash archlinux:latest -c \
-  "pacman -Sy --noconfirm python python-pipx && pipx install linux-mirror-bench && mirror-bench bench"
+  "pacman -Sy --noconfirm --needed curl ca-certificates >/dev/null && \
+   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null && \
+   ~/.local/bin/uvx --from linux-mirror-bench mirror-bench bench"
 ```
 
 For most uses the `ghcr.io/MysticRyuujin/mirror-bench` image is simpler — it already

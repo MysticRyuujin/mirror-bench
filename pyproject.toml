@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 # neighbors hit PyPI's similarity check. The installed command + import module
 # are still `mirror-bench` / `mirror_bench` via [project.scripts] below.
 name = "linux-mirror-bench"
-version = "0.1.0"
+version = "0.1.1"
 description = "Cross-distribution Linux package mirror benchmarking tool"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }

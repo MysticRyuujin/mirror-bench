@@ -179,15 +179,15 @@ CI containers or inside a running container of a specific distro):
 ```sh
 # Inside an Ubuntu container — distro auto-detected from /etc/os-release
 docker run --rm --entrypoint bash ubuntu:24.04 -c \
-  "apt-get update -qq && apt-get install -y -qq python3.14 pipx && pipx install mirror-bench && mirror-bench bench"
+  "apt-get update -qq && apt-get install -y -qq python3.14 pipx && pipx install linux-mirror-bench && mirror-bench bench"
 
 # Inside a Fedora container
 docker run --rm --entrypoint bash fedora:41 -c \
-  "dnf install -y python3.14 pipx && pipx install mirror-bench && mirror-bench bench"
+  "dnf install -y python3.14 pipx && pipx install linux-mirror-bench && mirror-bench bench"
 
 # Inside an Arch container
 docker run --rm --entrypoint bash archlinux:latest -c \
-  "pacman -Sy --noconfirm python python-pipx && pipx install mirror-bench && mirror-bench bench"
+  "pacman -Sy --noconfirm python python-pipx && pipx install linux-mirror-bench && mirror-bench bench"
 ```
 
 For most uses the `ghcr.io/MysticRyuujin/mirror-bench` image is simpler — it already

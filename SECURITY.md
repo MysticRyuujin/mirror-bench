@@ -52,6 +52,6 @@ Out of scope:
   PyPI (no long-lived tokens).
 - Wheels and container images are signed with SLSA build provenance via
   `actions/attest-build-provenance`.
-- Container images are published to `ghcr.io/MysticRyuujin/mirror-bench` with SBOMs
+- Container images are published to `ghcr.io/mysticryuujin/mirror-bench` with SBOMs
   attached at build time.
 - Dependencies are monitored by Dependabot and pinned via `uv.lock`.

@@ -12,8 +12,6 @@ ranked table, and exits. It never touches `/etc/apt/sources.list`,
 - Modern Python: 3.14, strict typing, async I/O (`httpx` + `asyncio.TaskGroup`).
 - Shippable everywhere: `pipx`, `uv tool`, PyPI wheels, and a minimal
   multi-arch container on GHCR.
-- Hardened supply chain: PyPI OIDC trusted publishing, SLSA build provenance,
-  SBOM attached at release, no long-lived tokens.
 
 ## Table of contents
 
@@ -167,8 +165,6 @@ docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
 ```
 
 ### Machine-readable output
-
-No `-t` here — you want the raw JSON stream, not ANSI escapes.
 
 ```sh
 docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \

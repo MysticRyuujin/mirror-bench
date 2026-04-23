@@ -125,7 +125,7 @@ Running `mirror-bench` with no subcommand is equivalent to `mirror-bench bench`.
 A minimal multi-arch (linux/amd64 + linux/arm64) image is published to GHCR:
 
 ```sh
-docker pull ghcr.io/MysticRyuujin/mirror-bench:latest
+docker pull ghcr.io/mysticryuujin/mirror-bench:latest
 ```
 
 The image is built on `python:3.14-slim-bookworm`, runs as a non-root user
@@ -142,8 +142,8 @@ directly.
 ### Basic invocation
 
 ```sh
-docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest --help
-docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest bench --distro ubuntu --country US
+docker run --rm ghcr.io/mysticryuujin/mirror-bench:latest --help
+docker run --rm ghcr.io/mysticryuujin/mirror-bench:latest bench --distro ubuntu --country US
 ```
 
 ### Per-distribution examples
@@ -152,30 +152,30 @@ Pick a `--distro` — the image is the same for all of them.
 
 ```sh
 # Ubuntu — default per-country sweep if no --country provided
-docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
+docker run --rm ghcr.io/mysticryuujin/mirror-bench:latest \
   bench --distro ubuntu --country US,CA --top 10
 
 # Debian
-docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
+docker run --rm ghcr.io/mysticryuujin/mirror-bench:latest \
   bench --distro debian --country DE,FR --https-only
 
 # Fedora — release version inferred from defaults if not passed via --distro value
-docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
+docker run --rm ghcr.io/mysticryuujin/mirror-bench:latest \
   bench --distro fedora --tls13-only --top 10
 
 # Linux Mint
-docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
+docker run --rm ghcr.io/mysticryuujin/mirror-bench:latest \
   bench --distro mint --top 15
 
 # Arch Linux
-docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
+docker run --rm ghcr.io/mysticryuujin/mirror-bench:latest \
   bench --distro arch --country DE,NL,SE
 ```
 
 ### Machine-readable output
 
 ```sh
-docker run --rm ghcr.io/MysticRyuujin/mirror-bench:latest \
+docker run --rm ghcr.io/mysticryuujin/mirror-bench:latest \
   bench --distro arch --json | jq '.results[] | {host: .mirror.host, latency_ms, score: .composite}'
 ```
 
@@ -214,7 +214,7 @@ docker run --rm --entrypoint bash archlinux:latest -c \
    ~/.local/bin/uvx --from linux-mirror-bench mirror-bench bench"
 ```
 
-For most uses the `ghcr.io/MysticRyuujin/mirror-bench` image is simpler — it already
+For most uses the `ghcr.io/mysticryuujin/mirror-bench` image is simpler — it already
 has the CLI and lets you benchmark _any_ distro via `--distro`.
 
 ### Building the image yourself
@@ -394,7 +394,7 @@ Supply-chain guarantees (starting at 0.1.0):
 - Releases published via GitHub Actions OIDC Trusted Publishing to PyPI — no
   long-lived tokens.
 - Wheels and container images carry **SLSA build provenance** attestations.
-- Container image published to `ghcr.io/MysticRyuujin/mirror-bench` with SBOM
+- Container image published to `ghcr.io/mysticryuujin/mirror-bench` with SBOM
   generated at build.
 - `uv.lock` pins dependency graph; Dependabot monitors it weekly.
 

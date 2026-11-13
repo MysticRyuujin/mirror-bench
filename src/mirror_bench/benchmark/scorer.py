@@ -16,7 +16,14 @@ def score_results(
     throughput_results: dict[str, ProbeResult] | None,
     weights: Weights,
 ) -> list[Score]:
-    latency_list = [r for r in latency_results if r.ok]
+    throughput_map = throughput_results or {}
+    # A mirror that sends its payload over plain HTTP is not an HTTPS mirror,
+    # whatever its metadata probe did. It must not be ranked as one.
+    latency_list = [
+        r
+        for r in latency_results
+        if r.ok and not _downgraded(throughput_map.get(r.mirror.url))
+    ]
     if not latency_list:
         return []
 
@@ -25,7 +32,6 @@ def score_results(
     # Collect latency numbers from phase 1; throughput numbers from phase 2 when
     # present, otherwise fall back to the latency-phase bytes_per_sec (which is
     # tiny / noisy but still orders the set consistently).
-    throughput_map = throughput_results or {}
     latencies = [r.ttfb_ms for r in latency_list if r.ttfb_ms is not None]
     lat_min, lat_max = (min(latencies), max(latencies)) if latencies else (0.0, 0.0)
 
@@ -76,6 +82,10 @@ def score_results(
 
     scores.sort(key=lambda s: s.composite, reverse=True)
     return scores
+
+
+def _downgraded(tput_probe: ProbeResult | None) -> bool:
+    return tput_probe is not None and tput_probe.error == "https_downgrade"
 
 
 def _normalize(value: float | None, lo: float, hi: float) -> float:

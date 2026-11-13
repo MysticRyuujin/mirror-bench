@@ -136,3 +136,16 @@ def test_security_score_values() -> None:
         [plain], None, Weights(latency=0, throughput=0, security=1.0)
     )
     assert scores[0].security_score == 0.0
+
+
+def test_throughput_https_downgrade_excludes_mirror() -> None:
+    good = make_probe(url="https://good.example.org/u/")
+    bad = make_probe(url="https://bad.example.org/u/")
+    tput_map = {
+        good.mirror.url: make_probe(url=good.mirror.url, bps=5_000_000.0),
+        bad.mirror.url: make_probe(
+            url=bad.mirror.url, bps=None, status=200, error="https_downgrade"
+        ),
+    }
+    scores = score_results([good, bad], tput_map, Weights())
+    assert [s.mirror.host for s in scores] == ["good.example.org"]

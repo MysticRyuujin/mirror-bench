@@ -66,7 +66,7 @@ walks you through the format interactively.
 1. Create `src/mirror_bench/discovery/<name>.py` implementing
    `MirrorDiscoverer` (`discover`, `probe_path`, `throughput_path`).
 2. Register it in `src/mirror_bench/discovery/__init__.py`'s `DISCOVERERS` map.
-3. Add the distro's `ID` / `ID_LIKE` aliases to
+3. Add the distro's `ID` aliases to
    `src/mirror_bench/distro.py::_ALIASES`.
 4. Add a respx-mocked test with a realistic fixture under
    `tests/fixtures/<name>_*`.

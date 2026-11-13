@@ -60,7 +60,7 @@ def test_from_override_unknown_raises() -> None:
 def test_resolve_uses_override() -> None:
     host = distro.resolve("debian")
     assert host.base_distro_id == "debian"
-    assert host.codename == "bookworm"
+    assert host.codename == "trixie"
 
 
 def test_detect_returns_none_when_os_release_missing() -> None:
@@ -115,3 +115,69 @@ def test_resolve_raises_when_detection_fails_and_no_override() -> None:
 def test_apt_arch_normalization() -> None:
     host = distro.from_override("ubuntu")
     assert host.apt_arch in {"amd64", "arm64"}  # depends on the test host
+
+
+@pytest.mark.parametrize(
+    "name", ["rocky", "almalinux", "centos", "rhel", "ol", "manjaro", "kali", "devuan"]
+)
+def test_distros_with_their_own_mirrors_are_unsupported(name: str) -> None:
+    with pytest.raises(distro.UnsupportedDistroError) as excinfo:
+        distro.from_override(name)
+    assert "--distro" in str(excinfo.value)
+
+
+def test_id_like_does_not_adopt_a_distro_with_its_own_mirrors() -> None:
+    fake = {"ID": "rocky", "ID_LIKE": "rhel centos fedora", "VERSION_ID": "9.4"}
+    with (
+        mock.patch("platform.freedesktop_os_release", return_value=fake),
+        pytest.raises(distro.UnsupportedDistroError),
+    ):
+        distro.resolve(None)
+
+
+def test_id_like_ubuntu_needs_ubuntu_codename() -> None:
+    fake = {"ID": "remix", "ID_LIKE": "ubuntu debian", "VERSION_CODENAME": "own"}
+    with mock.patch("platform.freedesktop_os_release", return_value=fake):
+        host = distro.detect()
+    assert host is not None
+    assert host.base_distro_id == "remix"
+
+    fake["UBUNTU_CODENAME"] = "noble"
+    with mock.patch("platform.freedesktop_os_release", return_value=fake):
+        host = distro.detect()
+    assert host is not None
+    assert host.base_distro_id == "ubuntu"
+    assert host.codename == "noble"
+
+
+def test_ubuntu_derivative_uses_ubuntu_codename() -> None:
+    fake = {
+        "ID": "elementary",
+        "ID_LIKE": "ubuntu",
+        "VERSION_CODENAME": "circe",
+        "UBUNTU_CODENAME": "noble",
+    }
+    with mock.patch("platform.freedesktop_os_release", return_value=fake):
+        host = distro.detect()
+    assert host is not None
+    assert host.base_distro_id == "ubuntu"
+    assert host.codename == "noble"
+
+
+def test_mint_keeps_its_own_codename() -> None:
+    fake = {
+        "ID": "linuxmint",
+        "ID_LIKE": "ubuntu debian",
+        "VERSION_CODENAME": "zena",
+        "UBUNTU_CODENAME": "noble",
+    }
+    with mock.patch("platform.freedesktop_os_release", return_value=fake):
+        host = distro.detect()
+    assert host is not None
+    assert host.base_distro_id == "mint"
+    assert host.codename == "zena"
+
+
+def test_default_codenames() -> None:
+    assert distro.from_override("mint").codename == "zena"
+    assert distro.from_override("debian").codename == "trixie"

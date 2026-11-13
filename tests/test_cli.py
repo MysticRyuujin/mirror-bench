@@ -1,7 +1,10 @@
 """CLI tests using typer.testing.CliRunner."""
 
 import json
+from unittest import mock
 
+import httpx
+import pytest
 import respx
 from typer.testing import CliRunner
 
@@ -187,3 +190,51 @@ def test_release_flag_short_form_accepted() -> None:
     # so we stop at argument parsing: exit code 2 would mean a BadParameter.
     result = runner.invoke(app, ["list", "--distro", "arch", "-r", "ignored", "--help"])
     assert result.exit_code == 0, result.output
+
+
+@respx.mock
+def test_no_subcommand_runs_bench_with_option_defaults() -> None:
+    fake = {"ID": "ubuntu", "VERSION_CODENAME": "noble", "VERSION_ID": "24.04"}
+    _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
+    respx.get("https://mir-a.org/ubuntu/dists/noble/InRelease").respond(
+        206, content=b"x" * 1024
+    )
+    respx.get("https://mir-a.org/ubuntu/dists/noble/Contents-amd64.gz").respond(
+        200, content=b"y" * (512 * 1024)
+    )
+    with mock.patch("platform.freedesktop_os_release", return_value=fake):
+        result = runner.invoke(app, [])
+    assert result.exit_code == 0, result.output
+    assert "mir-a.org" in result.output
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["bench", "--distro", "ubuntu", "--concurrency", "0"],
+        ["bench", "--distro", "ubuntu", "--top", "0"],
+        ["bench", "--distro", "ubuntu", "--top", "-3"],
+        ["bench", "--distro", "ubuntu", "--json", "--csv"],
+        ["list", "--distro", "ubuntu", "--json", "--csv"],
+        ["bench", "--distro", "ubuntu", "--weights", "lat=-1"],
+        ["bench", "--distro", "ubuntu", "--weights", "lat=nan"],
+        ["bench", "--distro", "ubuntu", "--weights", "lat=inf"],
+        ["bench", "--distro", "ubuntu", "--weights", "lat=0,thr=0,sec=0"],
+    ],
+)
+def test_invalid_option_values_are_usage_errors(args: list[str]) -> None:
+    result = runner.invoke(app, args)
+    assert result.exit_code == 2, result.output
+
+
+@pytest.mark.parametrize("command", ["bench", "list"])
+@respx.mock
+def test_discovery_failure_exits_1_without_traceback(command: str) -> None:
+    respx.get(url__regex=_COUNTRY_SWEEP_RE).mock(side_effect=httpx.ConnectError("boom"))
+    respx.get("http://mirrors.ubuntu.com/mirrors.txt").mock(
+        side_effect=httpx.ConnectError("boom")
+    )
+    result = runner.invoke(app, [command, "--distro", "ubuntu"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "could not discover ubuntu mirrors" in result.output

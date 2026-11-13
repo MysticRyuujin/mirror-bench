@@ -1,7 +1,7 @@
 """mirror-bench command-line interface."""
 
 import asyncio
-import sys
+import math
 
 import typer
 from rich.progress import (
@@ -12,11 +12,12 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+from typer.core import TyperGroup
 
 from mirror_bench import display
 from mirror_bench import distro as distro_mod
 from mirror_bench.benchmark import probe, scorer, transport
-from mirror_bench.discovery import get_discoverer
+from mirror_bench.discovery import DiscoveryError, get_discoverer
 from mirror_bench.models import (
     BenchConfig,
     HostInfo,
@@ -62,9 +63,11 @@ ReleaseOpt = typer.Option(
     ),
 )
 TopOpt = typer.Option(
-    15, "--top", "-n", help="Top-N mirrors to include in phase 2 / display."
+    15, "--top", "-n", min=1, help="Top-N mirrors to include in phase 2 / display."
 )
-ConcurrencyOpt = typer.Option(20, "--concurrency", help="Max concurrent HTTP probes.")
+ConcurrencyOpt = typer.Option(
+    20, "--concurrency", min=1, help="Max concurrent HTTP probes."
+)
 HttpsOnlyOpt = typer.Option(
     False, "--https-only", help="Exclude mirrors that don't serve HTTPS."
 )
@@ -116,19 +119,41 @@ def _parse_weights(raw: str | None) -> Weights:
     if unknown:
         msg = f"unknown weight keys: {sorted(unknown)}; expected {sorted(allowed)}"
         raise typer.BadParameter(msg)
+    if any(not math.isfinite(v) or v < 0 for v in mapped.values()):
+        msg = "weights must be finite and not negative"
+        raise typer.BadParameter(msg)
     defaults = Weights()
-    return Weights(
+    weights = Weights(
         latency=mapped.get("latency", defaults.latency),
         throughput=mapped.get("throughput", defaults.throughput),
         security=mapped.get("security", defaults.security),
     )
+    if weights.latency + weights.throughput + weights.security <= 0:
+        msg = "at least one weight must be greater than zero"
+        raise typer.BadParameter(msg)
+    return weights
+
+
+def _check_output_flags(json_out: bool, csv_out: bool) -> None:
+    if json_out and csv_out:
+        msg = "--json and --csv are mutually exclusive"
+        raise typer.BadParameter(msg)
+
+
+def _exit_on_discovery_error(exc: DiscoveryError) -> typer.Exit:
+    typer.secho(str(exc), fg=typer.colors.RED, err=True)
+    return typer.Exit(code=1)
 
 
 @app.callback(invoke_without_command=True)
 def _root(ctx: typer.Context) -> None:
     """If no subcommand is given, default to `bench`."""
-    if ctx.invoked_subcommand is None:
-        ctx.invoke(bench_cmd)
+    if ctx.invoked_subcommand is None and isinstance(ctx.command, TyperGroup):
+        # Invoke the click command, not the function: only the command
+        # resolves each option's default value.
+        bench = ctx.command.get_command(ctx, "bench")
+        if bench is not None:
+            ctx.invoke(bench)
 
 
 @app.command("bench")
@@ -146,6 +171,7 @@ def bench_cmd(
     no_throughput: bool = SkipThroughputOpt,
 ) -> None:
     """Discover mirrors, run a two-phase benchmark, print the ranked table."""
+    _check_output_flags(json_out, csv_out)
     try:
         host = distro_mod.resolve(distro, release)
     except distro_mod.DistroDetectionError as exc:
@@ -163,7 +189,10 @@ def bench_cmd(
         skip_throughput=no_throughput,
     )
 
-    scores = asyncio.run(_run_bench(host, cfg, quiet=json_out or csv_out))
+    try:
+        scores = asyncio.run(_run_bench(host, cfg, quiet=json_out or csv_out))
+    except DiscoveryError as exc:
+        raise _exit_on_discovery_error(exc) from exc
 
     if json_out:
         display.render_json(scores=scores, mirrors=None, host=host)
@@ -215,13 +244,17 @@ def list_cmd(
     csv_out: bool = CsvOpt,
 ) -> None:
     """Discover mirrors and print them without benchmarking."""
+    _check_output_flags(json_out, csv_out)
     try:
         host = distro_mod.resolve(distro, release)
     except distro_mod.DistroDetectionError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from exc
 
-    mirrors = asyncio.run(_run_discover(host, _parse_countries(country)))
+    try:
+        mirrors = asyncio.run(_run_discover(host, _parse_countries(country)))
+    except DiscoveryError as exc:
+        raise _exit_on_discovery_error(exc) from exc
     if json_out:
         display.render_json(scores=None, mirrors=mirrors, host=host)
     elif csv_out:
@@ -323,15 +356,3 @@ async def _run_bench(host: HostInfo, cfg: BenchConfig, *, quiet: bool) -> list[S
 
         scores = scorer.score_results(top_for_phase2, throughput_map, cfg.weights)
         return scores[: cfg.top]
-
-
-def main() -> None:
-    try:
-        app()
-    except KeyboardInterrupt:
-        typer.secho("interrupted", fg=typer.colors.YELLOW, err=True)
-        sys.exit(130)
-
-
-if __name__ == "__main__":
-    main()

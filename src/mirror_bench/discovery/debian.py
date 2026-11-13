@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING
 from mirror_bench.discovery.base import (
     MirrorDiscoverer,
     ensure_trailing_slash,
-    host_of,
+    fetch,
 )
+from mirror_bench.distro import DEFAULT_CODENAMES
 from mirror_bench.models import HostInfo, Mirror
 
 if TYPE_CHECKING:
@@ -24,46 +25,41 @@ class DebianDiscoverer(MirrorDiscoverer):
         host: HostInfo,
         countries: tuple[str, ...] = (),
     ) -> list[Mirror]:
-        resp = await client.get(_MASTERLIST)
-        resp.raise_for_status()
+        resp = await fetch(client, self.distro, _MASTERLIST)
         records = _parse_masterlist(resp.text)
         wanted_cc = {c.upper() for c in countries}
         mirrors: list[Mirror] = []
         seen: set[str] = set()
         for rec in records:
             site = rec.get("Site")
-            if not site:
+            archive_path = rec.get("Archive-http")
+            if not site or not archive_path:
                 continue
-            country = (rec.get("Country") or "").split()[0].upper() or None
+            country_parts = rec.get("Country", "").split()
+            country = country_parts[0].upper() if country_parts else None
             if wanted_cc and (country is None or country not in wanted_cc):
                 continue
-            archive_path = rec.get("Archive-http") or rec.get("Archive-https")
-            if not archive_path:
+            arches = rec.get("Archive-architecture", "").split()
+            if arches and host.apt_arch not in arches:
                 continue
-            scheme = "https" if "Archive-https" in rec else "http"
-            url = f"{scheme}://{site}{archive_path}"
-            if url in seen:
-                continue
-            seen.add(url)
-            protocols = tuple(
-                p for p in ("https", "http", "rsync") if rec.get(f"Archive-{p}")
-            )
-            mirrors.append(
-                Mirror(
-                    url=ensure_trailing_slash(url),
-                    host=host_of(url),
-                    country=country,
-                    protocols=protocols or (scheme,),
+            # The masterlist records only an HTTP path and does not say which
+            # sites also serve HTTPS, so both schemes are candidates.
+            for scheme in ("https", "http"):
+                url = ensure_trailing_slash(f"{scheme}://{site}{archive_path}")
+                if url in seen:
+                    continue
+                seen.add(url)
+                mirrors.append(
+                    Mirror(url=url, host=site, country=country, protocols=(scheme,))
                 )
-            )
         return mirrors
 
     def probe_path(self, host: HostInfo) -> str:
-        codename = host.codename or "bookworm"
+        codename = host.codename or DEFAULT_CODENAMES[self.distro]
         return f"dists/{codename}/InRelease"
 
     def throughput_path(self, host: HostInfo) -> str:
-        codename = host.codename or "bookworm"
+        codename = host.codename or DEFAULT_CODENAMES[self.distro]
         return f"dists/{codename}/main/Contents-{host.apt_arch}.gz"
 
 

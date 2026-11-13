@@ -16,11 +16,15 @@ if TYPE_CHECKING:
 
 # Phase 1 samples a small ranged window (1 KiB) to keep the latency probe cheap.
 _LATENCY_RANGE = "bytes=0-1023"
+_LATENCY_MAX_BYTES = 1024
+_LATENCY_DEADLINE_S = 10.0
 
 # Phase 2 downloads this many bytes max — caps the cost for slow/misbehaving mirrors.
 _THROUGHPUT_MAX_BYTES = 5 * 1024 * 1024
 _THROUGHPUT_MIN_BYTES = 256 * 1024
+_THROUGHPUT_DEADLINE_S = 30.0
 
+_PROBE_ERRORS = (httpx.HTTPError, httpx.InvalidURL, OSError)
 
 ProgressCallback = Callable[[str, int, int], None]
 
@@ -76,15 +80,12 @@ async def throughput_test(
     done = 0
     sem = asyncio.Semaphore(concurrency)
     out: dict[str, ProbeResult] = {}
-    lock = asyncio.Lock()
 
     async def _work(mirror: Mirror) -> None:
         nonlocal done
         async with sem:
-            result = await _throughput_probe(client, mirror, discoverer, host)
-            async with lock:
-                out[mirror.url] = result
-                done += 1
+            out[mirror.url] = await _throughput_probe(client, mirror, discoverer, host)
+            done += 1
             if on_progress is not None:
                 on_progress("throughput", done, total)
 
@@ -93,6 +94,46 @@ async def throughput_test(
             _ = tg.create_task(_work(m))
 
     return out
+
+
+def _downgraded(mirror: Mirror, resp: httpx.Response) -> bool:
+    """Did an HTTPS mirror send any hop of this exchange over plain HTTP?"""
+    return mirror.is_https and any(
+        r.url.scheme != "https" for r in (*resp.history, resp)
+    )
+
+
+def _failed(
+    mirror: Mirror,
+    error: str,
+    resp: httpx.Response | None = None,
+    *,
+    bytes_read: int = 0,
+) -> ProbeResult:
+    tls_version, cert_valid = _tls_fields(mirror, resp)
+    return ProbeResult(
+        mirror=mirror,
+        ttfb_ms=None,
+        total_ms=None,
+        bytes_read=bytes_read,
+        bytes_per_sec=None,
+        status=resp.status_code if resp is not None else None,
+        http_version=resp.http_version if resp is not None else None,
+        tls_version=tls_version,
+        cert_valid=cert_valid,
+        error=error,
+        final_url=str(resp.url) if resp is not None else None,
+    )
+
+
+def _tls_fields(
+    mirror: Mirror, resp: httpx.Response | None
+) -> tuple[str | None, bool | None]:
+    # An http:// mirror earns no TLS credit even when it redirects to HTTPS:
+    # the first hop, which carries the redirect itself, is unprotected.
+    if resp is None or not mirror.is_https:
+        return (None, None)
+    return tls_mod.inspect(resp)
 
 
 async def _latency_probe(
@@ -105,67 +146,62 @@ async def _latency_probe(
     url = mirror.url + discoverer.probe_path(host)
     ttfbs: list[float] = []
     totals: list[float] = []
-    last_status: int | None = None
-    last_http: str | None = None
-    last_tls: str | None = None
-    last_cert: bool | None = None
+    last_resp: httpx.Response | None = None
     last_bytes = 0
-    last_error: str | None = None
+    last_error = "no_samples"
 
-    for i in range(samples):
+    for _ in range(samples):
         started = time.perf_counter()
+        nbytes = 0
         try:
-            resp = await client.get(
-                url,
-                headers={"Range": _LATENCY_RANGE},
-                follow_redirects=False,
-            )
-        except (httpx.HTTPError, OSError) as exc:
+            async with (
+                asyncio.timeout(_LATENCY_DEADLINE_S),
+                client.stream("GET", url, headers={"Range": _LATENCY_RANGE}) as resp,
+            ):
+                ttfb_s = time.perf_counter() - started
+                if _downgraded(mirror, resp):
+                    return _failed(mirror, "https_downgrade", resp)
+                async for chunk in resp.aiter_raw():
+                    nbytes += len(chunk)
+                    # Only a server that ignored Range sends more than the
+                    # window. A ranged reply is read to its end, which keeps
+                    # the connection reusable for the next sample.
+                    if nbytes > _LATENCY_MAX_BYTES:
+                        break
+        except TimeoutError:
+            last_error = "timeout"
+        except _PROBE_ERRORS as exc:
             last_error = type(exc).__name__
+        else:
+            ttfbs.append(ttfb_s * 1000.0)
+            totals.append((time.perf_counter() - started) * 1000.0)
+            last_resp = resp
+            last_bytes = nbytes
             continue
-        total_s = time.perf_counter() - started
-        # httpx doesn't split TTFB / total cleanly for ranged responses; the whole 1KiB
-        # body is read by the time .get() returns. Record total for both — it's a tight
-        # upper bound on TTFB at this payload size.
-        ttfbs.append(total_s * 1000.0)
-        totals.append(total_s * 1000.0)
-        last_status = resp.status_code
-        last_http = resp.http_version
-        last_tls, last_cert = tls_mod.inspect(resp)
-        last_bytes = len(resp.content)
-        last_error = None
-        # On the last sample break early; earlier samples warm the connection.
-        if i >= samples - 1:
+        # A mirror that fails before any sample succeeds is not worth the
+        # remaining connect timeouts.
+        if not ttfbs:
             break
 
-    if not ttfbs:
-        return ProbeResult(
-            mirror=mirror,
-            ttfb_ms=None,
-            total_ms=None,
-            bytes_read=0,
-            bytes_per_sec=None,
-            status=last_status,
-            http_version=last_http,
-            tls_version=last_tls,
-            cert_valid=last_cert,
-            error=last_error or "no_samples",
-        )
+    if last_resp is None:
+        return _failed(mirror, last_error)
 
-    median_ttfb = median(ttfbs)
+    tls_version, cert_valid = _tls_fields(mirror, last_resp)
     median_total = median(totals)
-    bps = (last_bytes / (median_total / 1000.0)) if median_total > 0 else None
     return ProbeResult(
         mirror=mirror,
-        ttfb_ms=median_ttfb,
+        ttfb_ms=median(ttfbs),
         total_ms=median_total,
         bytes_read=last_bytes,
-        bytes_per_sec=bps,
-        status=last_status,
-        http_version=last_http,
-        tls_version=last_tls,
-        cert_valid=last_cert,
+        bytes_per_sec=(last_bytes / (median_total / 1000.0))
+        if median_total > 0
+        else None,
+        status=last_resp.status_code,
+        http_version=last_resp.http_version,
+        tls_version=tls_version,
+        cert_valid=cert_valid,
         error=None,
+        final_url=str(last_resp.url),
     )
 
 
@@ -179,73 +215,59 @@ async def _throughput_probe(
     started = time.perf_counter()
     bytes_read = 0
     first_byte_at: float | None = None
-    status: int | None = None
-    http_version: str | None = None
-    tls_version: str | None = None
-    cert_valid: bool | None = None
+    last_byte_at = started
+    resp: httpx.Response | None = None
     try:
-        async with client.stream("GET", url, follow_redirects=False) as resp:
-            status = resp.status_code
-            http_version = resp.http_version
-            tls_version, cert_valid = tls_mod.inspect(resp)
-            if not (200 <= status < 300):
-                return ProbeResult(
-                    mirror=mirror,
-                    ttfb_ms=None,
-                    total_ms=None,
-                    bytes_read=0,
-                    bytes_per_sec=None,
-                    status=status,
-                    http_version=http_version,
-                    tls_version=tls_version,
-                    cert_valid=cert_valid,
-                    error=f"http_{status}",
-                )
-            async for chunk in resp.aiter_bytes():
+        async with (
+            asyncio.timeout(_THROUGHPUT_DEADLINE_S),
+            client.stream("GET", url) as resp,
+        ):
+            if _downgraded(mirror, resp):
+                return _failed(mirror, "https_downgrade", resp)
+            if not (200 <= resp.status_code < 300):
+                return _failed(mirror, f"http_{resp.status_code}", resp)
+            # Raw bytes: a decoded Content-Encoding would inflate the count.
+            async for chunk in resp.aiter_raw():
+                last_byte_at = time.perf_counter()
                 if first_byte_at is None:
-                    first_byte_at = time.perf_counter()
+                    first_byte_at = last_byte_at
                 bytes_read += len(chunk)
                 if bytes_read >= _THROUGHPUT_MAX_BYTES:
                     break
-    except (httpx.HTTPError, OSError) as exc:
-        return ProbeResult(
-            mirror=mirror,
-            ttfb_ms=None,
-            total_ms=None,
-            bytes_read=bytes_read,
-            bytes_per_sec=None,
-            status=status,
-            http_version=http_version,
-            tls_version=tls_version,
-            cert_valid=cert_valid,
-            error=type(exc).__name__,
-        )
+    # TimeoutError is an OSError and httpx timeouts are HTTPErrors, so this
+    # clause must come first: a slow or stalled mirror that already delivered
+    # enough bytes still has a valid rate.
+    except TimeoutError, httpx.TimeoutException:
+        if bytes_read < _THROUGHPUT_MIN_BYTES:
+            return _failed(mirror, "timeout", resp, bytes_read=bytes_read)
+    except _PROBE_ERRORS as exc:
+        return _failed(mirror, type(exc).__name__, resp, bytes_read=bytes_read)
 
-    ended = time.perf_counter()
-    total_ms = (ended - started) * 1000.0
-    ttfb_ms = (
-        ((first_byte_at - started) * 1000.0) if first_byte_at is not None else None
-    )
+    if resp is None or first_byte_at is None:
+        return _failed(mirror, "empty_body", resp)
 
-    # Measure throughput from TTFB to end, skipping connect/TLS overhead, so the number
-    # reflects steady-state bandwidth rather than connection setup cost.
-    if first_byte_at is not None and bytes_read >= _THROUGHPUT_MIN_BYTES:
-        transfer_s = ended - first_byte_at
-        bps = bytes_read / transfer_s if transfer_s > 0 else None
-    elif bytes_read > 0 and total_ms > 0:
-        bps = bytes_read / (total_ms / 1000.0)
+    total_s = last_byte_at - started
+    # Measure throughput from TTFB to the last byte, skipping connect/TLS overhead,
+    # so the number reflects steady-state bandwidth rather than connection setup cost.
+    transfer_s = last_byte_at - first_byte_at
+    if bytes_read >= _THROUGHPUT_MIN_BYTES and transfer_s > 0:
+        bps = bytes_read / transfer_s
+    elif total_s > 0:
+        bps = bytes_read / total_s
     else:
         bps = None
 
+    tls_version, cert_valid = _tls_fields(mirror, resp)
     return ProbeResult(
         mirror=mirror,
-        ttfb_ms=ttfb_ms,
-        total_ms=total_ms,
+        ttfb_ms=(first_byte_at - started) * 1000.0,
+        total_ms=total_s * 1000.0,
         bytes_read=bytes_read,
         bytes_per_sec=bps,
-        status=status,
-        http_version=http_version,
+        status=resp.status_code,
+        http_version=resp.http_version,
         tls_version=tls_version,
         cert_valid=cert_valid,
         error=None,
+        final_url=str(resp.url),
     )

@@ -106,19 +106,19 @@ Running `mirror-bench` with no subcommand is equivalent to `mirror-bench bench`.
 
 ### Common flags
 
-| Flag                          | Description                                                                                 |
-| ----------------------------- | ------------------------------------------------------------------------------------------- |
-| `--distro, -d NAME`           | One of `ubuntu`, `debian`, `fedora`, `mint`, `arch`.                                        |
-| `--release, -r VALUE`         | Release override: codename for apt (noble, bookworm, wilma) or numeric for Fedora (41, 42). |
-| `--country, -c US,CA,GB`      | ISO 3166-1 alpha-2 country codes to filter on.                                              |
-| `--top, -n N`                 | How many mirrors to include in phase 2 / display (default 15).                              |
-| `--concurrency N`             | Max parallel HTTP probes (default 20).                                                      |
-| `--https-only`                | Hard-exclude mirrors without HTTPS.                                                         |
-| `--tls13-only`                | Hard-exclude mirrors that don't negotiate TLS 1.3.                                          |
-| `--weights lat=…,thr=…,sec=…` | Override scoring weights (auto-normalized).                                                 |
-| `--no-throughput`             | Skip phase 2. Phase-1 latency screen only.                                                  |
-| `--json`                      | Emit JSON to stdout. Suppresses the table + progress.                                       |
-| `--csv`                       | Emit CSV to stdout. Suppresses the table + progress.                                        |
+| Flag                          | Description                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `--distro, -d NAME`           | One of `ubuntu`, `debian`, `fedora`, `mint`, `arch`.                                     |
+| `--release, -r VALUE`         | Release override: codename for apt (noble, trixie, zena) or numeric for Fedora (44, 45). |
+| `--country, -c US,CA,GB`      | ISO 3166-1 alpha-2 country codes to filter on.                                           |
+| `--top, -n N`                 | How many mirrors to include in phase 2 / display (default 15).                           |
+| `--concurrency N`             | Max parallel HTTP probes (default 20).                                                   |
+| `--https-only`                | Hard-exclude mirrors without HTTPS.                                                      |
+| `--tls13-only`                | Hard-exclude mirrors that don't negotiate TLS 1.3.                                       |
+| `--weights lat=…,thr=…,sec=…` | Override scoring weights (auto-normalized).                                              |
+| `--no-throughput`             | Skip phase 2. Phase-1 latency screen only.                                               |
+| `--json`                      | Emit JSON to stdout. Suppresses the table + progress.                                    |
+| `--csv`                       | Emit CSV to stdout. Suppresses the table + progress.                                     |
 
 ## Running in Docker
 
@@ -344,6 +344,26 @@ $ mirror-bench bench --<TAB>
 --distro  --country  --top  --concurrency  --https-only  --tls13-only  …
 ```
 
+## Supported distributions
+
+| `--distro` | Auto-detected from `/etc/os-release` `ID`      |
+| ---------- | ---------------------------------------------- |
+| `ubuntu`   | `ubuntu`, `pop`, `elementary`, `zorin`, `neon` |
+| `debian`   | `debian`                                       |
+| `fedora`   | `fedora`, `nobara`                             |
+| `mint`     | `linuxmint`                                    |
+| `arch`     | `arch`, `archlinux`, `endeavouros`             |
+
+Another Ubuntu remix is detected when its `os-release` has `ID_LIKE=ubuntu`
+and `UBUNTU_CODENAME`.
+
+Distributions with their own mirror network (RHEL family, Kali, Devuan,
+Raspberry Pi OS, Manjaro) are not supported. Ranking the mirrors of a
+different distribution for them gives a wrong answer.
+
+The Ubuntu, Mint, and Arch throughput tests always fetch the x86_64 file.
+The mirror lists for those distributions cover x86_64 mirrors only.
+
 ## How it works
 
 1. **Discover** — fetch the canonical mirror list for the target distribution:
@@ -351,18 +371,31 @@ $ mirror-bench bench --<TAB>
      set (`mirrors.ubuntu.com/mirrors.txt` returns a geo-selected _single_
      mirror, not a full list — so we don't rely on it alone).
    - Debian: `mirror-master.debian.org/status/Mirrors.masterlist` (RFC822
-     multi-record format).
+     multi-record format). The list does not say which sites serve HTTPS, so
+     each site is tried as an `https://` and an `http://` candidate.
    - Fedora: `mirrors.fedoraproject.org/mirrorlist?repo=&arch=&country=`.
    - Linux Mint: scraped from `linuxmint.com/mirrors.php`.
-   - Arch: `archlinux.org/mirrors/status/json/` (JSON, filtered to active).
+   - Arch: `archlinux.org/mirrors/status/json/` (JSON, filtered to active
+     HTTP and HTTPS entries).
+
+   If the list cannot be fetched, the command prints the reason and exits
+   with code 1.
+
 2. **Phase 1 — latency screen.** Concurrent ranged GET (`bytes=0-1023`) on the
-   distro's canonical small metadata file (`InRelease`, `repomd.xml`,
-   `lastsync`). Three samples per mirror, **median TTFB** used for ranking.
-3. **Phase 2 — throughput test.** Full streaming GET of a representative file
-   (`Contents-<arch>.gz` for apt, `core.db` for Arch, etc.) on the top N from
-   phase 1, capped at 5 MiB. `bytes_per_sec` is measured from first-byte to
-   end-of-stream so steady-state bandwidth isn't polluted by connect/TLS
-   overhead.
+   distro's canonical small metadata file (`InRelease` for Ubuntu and Debian,
+   `Release` for Mint, `repomd.xml` for Fedora, `lastsync` for Arch). Three
+   samples per mirror, **median TTFB** used for ranking.
+3. **Phase 2 — throughput test.** Streaming GET of a large file
+   (`Contents-<arch>.gz` for apt, `images/install.img` for Fedora, `extra.db`
+   for Arch) on the top N from phase 1, capped at 5 MiB and 30 seconds.
+   `bytes_per_sec` is measured from first-byte to last-byte so steady-state
+   bandwidth isn't polluted by connect/TLS overhead.
+
+   Both phases follow redirects, so the timing includes the extra hop that a
+   package manager also pays. Only a 2xx final response counts. An `https://`
+   mirror that redirects to `http://` fails with `https_downgrade`. An
+   `http://` mirror gets no TLS credit, even when it redirects to HTTPS.
+
 4. **Score.** Weighted composite of normalized latency (inverse), throughput,
    and security (HTTPS + TLS 1.3 + cert-valid + HTTP/2, max 3.5). Weights
    default to `lat=0.4, thr=0.4, sec=0.2` and are user-overridable.

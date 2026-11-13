@@ -1,7 +1,7 @@
 """Per-distribution mirror discoverers."""
 
 from mirror_bench.discovery.arch import ArchDiscoverer
-from mirror_bench.discovery.base import MirrorDiscoverer
+from mirror_bench.discovery.base import DiscoveryError, MirrorDiscoverer
 from mirror_bench.discovery.debian import DebianDiscoverer
 from mirror_bench.discovery.fedora import FedoraDiscoverer
 from mirror_bench.discovery.mint import MintDiscoverer
@@ -37,6 +37,7 @@ def get_discoverer(base_distro_id: str) -> MirrorDiscoverer:
 
 __all__ = [
     "DISCOVERERS",
+    "DiscoveryError",
     "MirrorDiscoverer",
     "UnknownDiscovererError",
     "get_discoverer",

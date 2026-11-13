@@ -55,11 +55,12 @@ class ProbeResult:
     tls_version: str | None
     cert_valid: bool | None
     error: str | None = None
+    final_url: str | None = None
 
     @property
     def ok(self) -> bool:
         return (
-            self.error is None and self.status is not None and 200 <= self.status < 400
+            self.error is None and self.status is not None and 200 <= self.status < 300
         )
 
 

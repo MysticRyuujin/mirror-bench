@@ -17,8 +17,11 @@ tags onto each URL, skipping queries that hit the global fallback.
 from typing import TYPE_CHECKING
 
 from mirror_bench.discovery.base import (
+    DiscoveryError,
     MirrorDiscoverer,
     ensure_trailing_slash,
+    fetch,
+    fetch_all,
     host_of,
 )
 from mirror_bench.models import HostInfo, Mirror
@@ -28,8 +31,10 @@ if TYPE_CHECKING:
 
 _MIRRORLIST = "https://mirrors.fedoraproject.org/mirrorlist"
 
+_DEFAULT_RELEASE = "45"
+
 # Covers most Fedora mirror geography. Each miss adds one HTTP roundtrip; we
-# swallow the cost once at discovery time so the table shows useful CC info.
+# pay the cost once at discovery time so the table shows useful CC info.
 _DEFAULT_COUNTRIES: tuple[str, ...] = (
     "US",
     "CA",
@@ -68,11 +73,8 @@ class FedoraDiscoverer(MirrorDiscoverer):
         host: HostInfo,
         countries: tuple[str, ...] = (),
     ) -> list[Mirror]:
-        releasever = host.release_version or "41"
-        base_params: dict[str, str] = {
-            "repo": f"fedora-{releasever}",
-            "arch": host.arch,
-        }
+        repo = f"fedora-{host.release_version or _DEFAULT_RELEASE}"
+        base_params: dict[str, str] = {"repo": repo, "arch": host.arch}
 
         if countries:
             return await _per_country(client, base_params, countries)
@@ -82,10 +84,29 @@ class FedoraDiscoverer(MirrorDiscoverer):
         return "repodata/repomd.xml"
 
     def throughput_path(self, host: HostInfo) -> str:
-        # Reuse repomd.xml: real throughput for Fedora would require parsing
-        # repomd.xml per-mirror to find primary.xml.gz. Accepting the
-        # latency-biased measurement for now.
-        return "repodata/repomd.xml"
+        # A large file with a fixed name for the life of a release. repodata
+        # payloads have hashed names that differ between mirror sync states.
+        return "images/install.img"
+
+
+async def _country_responses(
+    client: httpx.AsyncClient,
+    base_params: dict[str, str],
+    countries: tuple[str, ...],
+) -> list[tuple[str, str]]:
+    """Return (CC, body) for each country MirrorManager really served."""
+    responses = await fetch_all(
+        client,
+        [(_MIRRORLIST, {**base_params, "country": cc.lower()}) for cc in countries],
+    )
+    out: list[tuple[str, str]] = []
+    for cc, resp in zip(countries, responses, strict=True):
+        if resp is None or resp.status_code != 200:
+            continue
+        _check_repo(resp.text, base_params["repo"])
+        if _response_honored_country(resp.text, cc):
+            out.append((cc.upper(), resp.text))
+    return out
 
 
 async def _per_country(
@@ -95,16 +116,12 @@ async def _per_country(
 ) -> list[Mirror]:
     seen: set[str] = set()
     mirrors: list[Mirror] = []
-    for cc in countries:
-        params = {**base_params, "country": cc.lower()}
-        resp = await client.get(_MIRRORLIST, params=params)
-        if resp.status_code != 200 or not _response_honored_country(resp.text, cc):
-            continue
-        for url in _parse_mirrorlist(resp.text):
+    for cc, text in await _country_responses(client, base_params, countries):
+        for url in _parse_mirrorlist(text):
             if url in seen:
                 continue
             seen.add(url)
-            mirrors.append(_make_mirror(url, cc.upper()))
+            mirrors.append(_make_mirror(url, cc))
     return mirrors
 
 
@@ -114,19 +131,15 @@ async def _global_with_country_overlay(
 ) -> list[Mirror]:
     # Build the authoritative URL set first so we don't lose mirrors in
     # countries outside the default sweep.
-    resp = await client.get(_MIRRORLIST, params=base_params)
-    resp.raise_for_status()
+    resp = await fetch(client, "fedora", _MIRRORLIST, params=base_params)
+    _check_repo(resp.text, base_params["repo"])
     global_urls = _parse_mirrorlist(resp.text)
 
     country_by_url: dict[str, str] = {}
-    for cc in _DEFAULT_COUNTRIES:
-        params = {**base_params, "country": cc.lower()}
-        cr = await client.get(_MIRRORLIST, params=params)
-        if cr.status_code != 200 or not _response_honored_country(cr.text, cc):
-            continue
-        for url in _parse_mirrorlist(cr.text):
+    for cc, text in await _country_responses(client, base_params, _DEFAULT_COUNTRIES):
+        for url in _parse_mirrorlist(text):
             # First country claiming a URL wins; stable across reruns.
-            country_by_url.setdefault(url, cc.upper())
+            country_by_url.setdefault(url, cc)
 
     mirrors: list[Mirror] = []
     seen: set[str] = set()
@@ -136,6 +149,29 @@ async def _global_with_country_overlay(
         seen.add(url)
         mirrors.append(_make_mirror(url, country_by_url.get(url)))
     return mirrors
+
+
+def _check_repo(text: str, requested_repo: str) -> None:
+    """Reject a response for a repo other than the one requested.
+
+    MirrorManager answers an unreleased version with `repo = rawhide`, and an
+    unknown one with an `error:` header and no mirrors. Both arrive as HTTP 200.
+    """
+    header = text.partition("\n")[0].lower()
+    if not header.startswith("#"):
+        return
+    if "error:" in header:
+        raise DiscoveryError("fedora", _MIRRORLIST, f"no such repo {requested_repo!r}")
+    tokens = header.replace("=", " = ").split()
+    if "repo" not in tokens:
+        return
+    served = tokens[tokens.index("repo") + 2 : tokens.index("repo") + 3]
+    if served and served[0] != requested_repo.lower():
+        raise DiscoveryError(
+            "fedora",
+            _MIRRORLIST,
+            f"asked for {requested_repo!r}, mirror list is for {served[0]!r}",
+        )
 
 
 def _response_honored_country(text: str, requested_cc: str) -> bool:

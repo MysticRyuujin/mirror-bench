@@ -398,6 +398,11 @@ The mirror lists for those distributions cover x86_64 mirrors only.
    `bytes_per_sec` is measured from first-byte to last-byte so steady-state
    bandwidth isn't polluted by connect/TLS overhead.
 
+   A mirror that answers a missing file with status 200 and an HTML error
+   page fails phase 1 with `soft_404`. A complete phase 2 body under 256 KiB
+   fails with `short_body`. If no mirror passes phase 1, a line on stderr
+   gives the most common failure; a wrong `--release` is the usual cause.
+
    Both phases follow redirects, so the timing includes the extra hop that a
    package manager also pays. Only a 2xx final response counts. An `https://`
    mirror that redirects to `http://` fails with `https_downgrade`. An

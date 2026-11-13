@@ -99,6 +99,11 @@ async def throughput_test(
     return out
 
 
+def _is_html(body: bytes | bytearray) -> bool:
+    # None of the probed files is HTML; Fedora's repomd.xml starts `<?xml`.
+    return bytes(body[:64]).lstrip().lower().startswith((b"<!doctype html", b"<html"))
+
+
 def _downgraded(mirror: Mirror, resp: httpx.Response) -> bool:
     """Did an HTTPS mirror send any hop of this exchange over plain HTTP?"""
     return mirror.is_https and any(
@@ -189,6 +194,9 @@ async def _latency_probe(
         else:
             ttfbs.append(ttfb_s * 1000.0)
             totals.append((time.perf_counter() - started) * 1000.0)
+            if resp.is_success and _is_html(body):
+                # Some mirrors answer a missing file with 200 and an error page.
+                return _failed(mirror, "soft_404", resp)
             last_resp = resp
             last_bytes = nbytes
             last_body = bytes(body[:_LATENCY_MAX_BYTES])
@@ -262,13 +270,17 @@ async def _throughput_probe(
 
     if resp is None or first_byte_at is None:
         return _failed(mirror, "empty_body", resp)
+    if bytes_read < _THROUGHPUT_MIN_BYTES:
+        # Each throughput file is megabytes long. A complete body this short
+        # is an error page or a stub, and its rate would mean nothing.
+        return _failed(mirror, "short_body", resp, bytes_read=bytes_read)
 
     total_s = last_byte_at - started
     # Measure throughput from TTFB to the last byte, skipping connect/TLS overhead,
     # so the number reflects steady-state bandwidth rather than connection setup cost.
     transfer_s = last_byte_at - first_byte_at
-    if bytes_read >= _THROUGHPUT_MIN_BYTES and transfer_s > 0:
-        bps = bytes_read / transfer_s
+    if transfer_s > 0:
+        bps: float | None = bytes_read / transfer_s
     elif total_s > 0:
         bps = bytes_read / total_s
     else:

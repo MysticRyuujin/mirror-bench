@@ -2,6 +2,7 @@
 
 import asyncio
 import gzip
+import os
 from typing import TYPE_CHECKING
 
 import httpx
@@ -297,7 +298,8 @@ async def test_latency_probe_invalid_url_is_captured(
 @pytest.mark.asyncio
 @respx.mock
 async def test_throughput_counts_bytes_on_the_wire(client: httpx.AsyncClient) -> None:
-    compressed = gzip.compress(b"0" * (4 * _KIB * _KIB))
+    # Random bytes: the wire size must stay above the short-body limit.
+    compressed = gzip.compress(os.urandom(512 * _KIB))
     respx.get(_THROUGHPUT_URL).respond(
         200, content=compressed, headers={"Content-Encoding": "gzip"}
     )
@@ -422,3 +424,33 @@ async def test_latency_probe_without_a_sync_time_is_still_ok(
     r = await _latency(client, _mirror())
     assert r.ok
     assert r.sync_time is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_error_page_with_status_200_is_not_a_working_mirror(
+    client: httpx.AsyncClient,
+) -> None:
+    page = b"<html><head><title>404 Not Found</title></head><body>gone</body></html>"
+    respx.get(_LATENCY_URL).respond(200, content=page)
+    r = await _latency(client, _mirror())
+    assert not r.ok
+    assert r.error == "soft_404"
+
+    respx.get(_THROUGHPUT_URL).respond(200, content=page)
+    t = await _throughput(client, _mirror())
+    assert not t.ok
+    assert t.error == "short_body"
+    assert t.bytes_per_sec is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_xml_metadata_is_not_mistaken_for_an_error_page(
+    client: httpx.AsyncClient,
+) -> None:
+    respx.get(_LATENCY_URL).respond(
+        206, content=b'<?xml version="1.0"?>\n<repomd><revision>1</revision></repomd>'
+    )
+    r = await _latency(client, _mirror())
+    assert r.ok

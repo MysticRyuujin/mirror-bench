@@ -14,6 +14,7 @@ uncovered countries), then sweep a default country set to *overlay* country
 tags onto each URL, skipping queries that hit the global fallback.
 """
 
+import re
 from typing import TYPE_CHECKING
 
 from mirror_bench.discovery.base import (
@@ -22,6 +23,7 @@ from mirror_bench.discovery.base import (
     ensure_trailing_slash,
     fetch,
     fetch_all,
+    first_int,
     host_of,
     with_https_candidates,
 )
@@ -33,6 +35,8 @@ if TYPE_CHECKING:
 _MIRRORLIST = "https://mirrors.fedoraproject.org/mirrorlist"
 
 _DEFAULT_RELEASE = "45"
+_REVISION_RE = re.compile(rb"<revision>(\d+)</revision>")
+_RELEASE_TREE_RE = re.compile(r"/releases/[^/]+/Everything/[^/]+/os/\Z")
 
 # Covers most Fedora mirror geography. Each miss adds one HTTP roundtrip; we
 # pay the cost once at discovery time so the table shows useful CC info.
@@ -84,12 +88,36 @@ class FedoraDiscoverer(MirrorDiscoverer):
         return with_https_candidates(mirrors)
 
     def probe_path(self, host: HostInfo) -> str:
-        return "repodata/repomd.xml"
+        # The release tree never changes, so its metadata cannot show that a
+        # mirror stopped syncing. The updates tree is rewritten on each push.
+        # Mirror URLs end in releases/<ver>/Everything/<arch>/os/; the updates
+        # tree is a sibling of releases/.
+        release = host.release_version or _DEFAULT_RELEASE
+        return (
+            f"../../../../../updates/{release}/Everything/{host.arch}"
+            "/repodata/repomd.xml"
+        )
+
+    def probe_url(self, mirror: Mirror, host: HostInfo) -> str:
+        if _in_release_tree(mirror):
+            return mirror.url + self.probe_path(host)
+        # An unusual layout: the updates tree cannot be located from this
+        # URL, so probe the listed repository and report no sync time.
+        return mirror.url + "repodata/repomd.xml"
+
+    def sync_time(self, mirror: Mirror, body: bytes) -> float | None:
+        if not _in_release_tree(mirror):
+            return None
+        return first_int(body, _REVISION_RE)
 
     def throughput_path(self, host: HostInfo) -> str:
         # A large file with a fixed name for the life of a release. repodata
         # payloads have hashed names that differ between mirror sync states.
         return "images/install.img"
+
+
+def _in_release_tree(mirror: Mirror) -> bool:
+    return _RELEASE_TREE_RE.search(mirror.url) is not None
 
 
 async def _country_responses(

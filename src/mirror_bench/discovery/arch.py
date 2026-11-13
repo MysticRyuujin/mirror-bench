@@ -1,5 +1,6 @@
 """Arch Linux mirror discovery via archlinux.org/mirrors/status/json/."""
 
+import re
 from typing import TYPE_CHECKING
 
 from mirror_bench.discovery.base import (
@@ -7,6 +8,7 @@ from mirror_bench.discovery.base import (
     MirrorDiscoverer,
     ensure_trailing_slash,
     fetch,
+    first_int,
     host_of,
 )
 from mirror_bench.models import HostInfo, Mirror
@@ -15,6 +17,7 @@ if TYPE_CHECKING:
     import httpx
 
 _STATUS_JSON = "https://archlinux.org/mirrors/status/json/"
+_UNIX_TIME_RE = re.compile(rb"\A\s*(\d+)\s*\Z")
 
 
 class ArchDiscoverer(MirrorDiscoverer):
@@ -59,7 +62,12 @@ class ArchDiscoverer(MirrorDiscoverer):
         return mirrors
 
     def probe_path(self, host: HostInfo) -> str:
-        return "lastsync"
+        # `lastupdate` changes when the content does; `lastsync` changes on
+        # each sync run, so two mirrors with equal content would differ.
+        return "lastupdate"
+
+    def sync_time(self, mirror: Mirror, body: bytes) -> float | None:
+        return first_int(body, _UNIX_TIME_RE)
 
     def throughput_path(self, host: HostInfo) -> str:
         # Official Arch mirrors carry x86_64 only, whatever the probing host is.

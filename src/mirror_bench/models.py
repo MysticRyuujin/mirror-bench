@@ -57,6 +57,7 @@ class ProbeResult:
     error: str | None = None
     final_url: str | None = None
     h3_port: int | None = None
+    sync_time: float | None = None
 
     @property
     def ok(self) -> bool:
@@ -77,6 +78,7 @@ class Score:
     probe: ProbeResult
     throughput_probe: ProbeResult | None = None
     h3_probe: ProbeResult | None = None
+    sync_age_s: float | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -113,3 +115,4 @@ class BenchConfig:
     samples: int = 3
     skip_throughput: bool = False
     http3: bool = False
+    max_age_hours: float = 36.0

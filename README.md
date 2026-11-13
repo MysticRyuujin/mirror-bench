@@ -117,6 +117,7 @@ Running `mirror-bench` with no subcommand is equivalent to `mirror-bench bench`.
 | `--tls13-only`                | Hard-exclude mirrors that don't negotiate TLS 1.3.                                       |
 | `--weights lat=…,thr=…,sec=…` | Override scoring weights (auto-normalized).                                              |
 | `--no-throughput`             | Skip phase 2. Phase-1 latency screen only.                                               |
+| `--max-age HOURS`             | Drop mirrors more than this far behind the newest mirror (default 36). `0` keeps all.    |
 | `--http3`                     | Probe over QUIC the mirrors that advertise HTTP/3. Needs the `http3` extra.              |
 | `--json`                      | Emit JSON to stdout. Suppresses the table + progress.                                    |
 | `--csv`                       | Emit CSV to stdout. Suppresses the table + progress.                                     |
@@ -386,10 +387,11 @@ The mirror lists for those distributions cover x86_64 mirrors only.
    If the list cannot be fetched, the command prints the reason and exits
    with code 1.
 
-2. **Phase 1 — latency screen.** Concurrent ranged GET (`bytes=0-1023`) on the
-   distro's canonical small metadata file (`InRelease` for Ubuntu and Debian,
-   `Release` for Mint, `repomd.xml` for Fedora, `lastsync` for Arch). Three
-   samples per mirror, **median TTFB** used for ranking.
+2. **Phase 1 — latency screen.** Concurrent ranged GET (`bytes=0-1023`) on a
+   small metadata file that the distribution rewrites as packages change:
+   `InRelease` of the `-updates` suite for Ubuntu and Debian, `Release` for
+   Mint, `repomd.xml` of the updates repository for Fedora, `lastupdate` for
+   Arch. Three samples per mirror, **median TTFB** used for ranking.
 3. **Phase 2 — throughput test.** Streaming GET of a large file
    (`Contents-<arch>.gz` for apt, `images/install.img` for Fedora, `extra.db`
    for Arch) on the top N from phase 1, capped at 5 MiB and 30 seconds.
@@ -412,6 +414,23 @@ The mirror lists for those distributions cover x86_64 mirrors only.
    - When a site answers on `https://` and `http://`, only the `https://` row
      is kept.
 5. **Render.** A `rich.Table`, or JSON / CSV for scripting.
+
+### Freshness
+
+A fast mirror that stopped syncing serves old packages. The phase 1 file
+carries the time its content was generated, so each run also reads that
+time, with no extra request.
+
+- The `Age` column shows how far a mirror is behind the newest mirror in the
+  run: `0`, `23h`, `12d`, or `-` when the file gave no time. JSON and CSV
+  carry it as `sync_age_s`.
+- Age is relative to the other mirrors, not to your clock. If the
+  distribution published nothing for a week, every current mirror still
+  shows `0`.
+- Mirrors more than 36 hours behind are dropped before ranking, and a line on
+  stderr says how many. Change the limit with `--max-age HOURS`; `0` keeps
+  all mirrors.
+- Age does not change the score. A stale mirror is wrong, not slow.
 
 ### HTTP/3
 

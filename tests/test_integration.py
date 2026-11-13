@@ -9,7 +9,7 @@ import os
 import pytest
 
 from mirror_bench import distro
-from mirror_bench.benchmark import probe, transport
+from mirror_bench.benchmark import probe, scorer, transport
 from mirror_bench.discovery import get_discoverer
 from tests.conftest import make_host
 
@@ -53,6 +53,12 @@ async def test_default_probe_paths_exist_on_real_mirrors(name: str) -> None:
         latency = await probe.latency_screen(client, mirrors, discoverer, host)
         reachable = [r.mirror for r in latency if r.ok]
         assert reachable, {r.mirror.host: r.error or r.status for r in latency}
+
+        # The probe file must carry a sync time for most mirrors, and the
+        # newest mirror defines age 0.
+        ages = scorer.sync_ages(latency)
+        assert len(ages) >= 0.8 * len(reachable), f"{len(ages)} of {len(reachable)}"
+        assert min(ages.values()) == 0.0
         throughput = await probe.throughput_test(client, reachable, discoverer, host)
 
     usable = [

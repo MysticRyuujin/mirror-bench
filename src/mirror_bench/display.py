@@ -41,6 +41,7 @@ def render_bench(
     table.add_column("CC")
     table.add_column("Latency (ms)", justify="right")
     table.add_column("Throughput", justify="right")
+    table.add_column("Age", justify="right")
     table.add_column("HTTPS")
     table.add_column("TLS")
     table.add_column("HTTP/2")
@@ -64,6 +65,7 @@ def render_bench(
             s.mirror.country or "-",
             _fmt_ms(s.latency_ms),
             _fmt_bps(s.throughput_bps),
+            _fmt_age(s.sync_age_s),
             _yes_no(s.mirror.is_https),
             s.probe.tls_version or "-",
             _yes_no(s.probe.http_version in {"HTTP/2", "HTTP/2.0"}),
@@ -140,6 +142,7 @@ def render_csv(
             "h3_advertised",
             "h3_latency_ms",
             "h3_error",
+            "sync_age_s",
         ]
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
@@ -172,6 +175,9 @@ def render_csv(
                     "h3_advertised": "true" if s.probe.h3_port is not None else "false",
                     "h3_latency_ms": f"{h3_ms:.2f}" if h3_ms is not None else "",
                     "h3_error": _h3_error(s) or "",
+                    "sync_age_s": f"{s.sync_age_s:.0f}"
+                    if s.sync_age_s is not None
+                    else "",
                 }
             )
         return
@@ -232,6 +238,18 @@ def _yes_no(flag: bool | None) -> str:
 
 def _fmt_ms(v: float | None) -> str:
     return f"{v:.0f}" if v is not None else "-"
+
+
+def _fmt_age(age_s: float | None) -> str:
+    """How far behind the newest mirror: `0`, `23h`, `12d`; `-` if unknown."""
+    if age_s is None:
+        return "-"
+    hours = age_s / 3600
+    if hours < 0.5:
+        return "0"
+    if hours < 48:
+        return f"{hours:.0f}h"
+    return f"{hours / 24:.0f}d"
 
 
 def _fmt_bps(bps: float | None) -> str:
@@ -298,6 +316,7 @@ def _score_dict(s: Score) -> dict[str, Any]:
         "h3_advertised": s.probe.h3_port is not None,
         "h3_latency_ms": _h3_latency_ms(s),
         "h3_error": _h3_error(s),
+        "sync_age_s": s.sync_age_s,
     }
 
 

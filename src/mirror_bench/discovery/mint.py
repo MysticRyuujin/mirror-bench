@@ -19,6 +19,7 @@ from mirror_bench.discovery.base import (
     ensure_trailing_slash,
     fetch,
     host_of,
+    release_date,
 )
 from mirror_bench.distro import DEFAULT_CODENAMES
 from mirror_bench.models import HostInfo, Mirror
@@ -77,6 +78,9 @@ class MintDiscoverer(MirrorDiscoverer):
         # Mint's repository publishes Release only, not InRelease.
         codename = host.codename or DEFAULT_CODENAMES[self.distro]
         return f"dists/{codename}/Release"
+
+    def sync_time(self, mirror: Mirror, body: bytes) -> float | None:
+        return release_date(body)
 
     def throughput_path(self, host: HostInfo) -> str:
         # Mint packages exist for amd64 and i386 only.

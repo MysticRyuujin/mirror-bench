@@ -94,6 +94,14 @@ Http3Opt = typer.Option(
         'Needs the optional extra: "linux-mirror-bench[http3]".'
     ),
 )
+MaxAgeOpt = typer.Option(
+    36.0,
+    "--max-age",
+    min=0.0,
+    help=(
+        "Drop mirrors more than this many hours behind the newest mirror. 0 keeps all."
+    ),
+)
 SkipThroughputOpt = typer.Option(
     False,
     "--no-throughput",
@@ -179,9 +187,13 @@ def bench_cmd(
     csv_out: bool = CsvOpt,
     no_throughput: bool = SkipThroughputOpt,
     http3: bool = Http3Opt,
+    max_age: float = MaxAgeOpt,
 ) -> None:
     """Discover mirrors, run a two-phase benchmark, print the ranked table."""
     _check_output_flags(json_out, csv_out)
+    if not math.isfinite(max_age):
+        msg = "--max-age must be a finite number of hours"
+        raise typer.BadParameter(msg)
     if http3:
         # Before discovery, so the flag fails the same way whether or not
         # any mirror turns out to advertise HTTP/3.
@@ -206,6 +218,7 @@ def bench_cmd(
         weights=_parse_weights(weights),
         skip_throughput=no_throughput,
         http3=http3,
+        max_age_hours=max_age,
     )
     if no_throughput and cfg.weights.latency + cfg.weights.security <= 0:
         msg = "--no-throughput needs a latency or security weight above zero"
@@ -338,7 +351,21 @@ async def _run_bench(host: HostInfo, cfg: BenchConfig, *, quiet: bool) -> list[S
                     on_progress=on_prog,
                 )
 
-        latency_results = scorer.prefer_https(latency_results)
+        # Stale endpoints go first: prefer_https would otherwise keep a stale
+        # https:// endpoint and discard its current http:// twin.
+        ages = scorer.sync_ages(latency_results)
+        fresh = scorer.drop_stale(latency_results, ages, cfg.max_age_hours * 3600)
+        fresh_hosts = {r.mirror.host for r in fresh}
+        stale_hosts = {r.mirror.host for r in latency_results} - fresh_hosts
+        if stale_hosts:
+            typer.secho(
+                f"dropped {len(stale_hosts)} "
+                f"{'mirror' if len(stale_hosts) == 1 else 'mirrors'} more than "
+                f"{cfg.max_age_hours:g} h behind the newest",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        latency_results = scorer.prefer_https(fresh)
         if cfg.tls13_only:
             latency_results = scorer.filter_for_policy(
                 latency_results, https_only=False, tls13_only=True
@@ -378,7 +405,7 @@ async def _run_bench(host: HostInfo, cfg: BenchConfig, *, quiet: bool) -> list[S
                         on_progress=on_prog2,
                     )
 
-        scores = scorer.score_results(top_for_phase2, throughput_map, cfg.weights)
+        scores = scorer.score_results(top_for_phase2, throughput_map, cfg.weights, ages)
         if cfg.http3:
             scores = await _with_h3_probes(scores, min(8, cfg.concurrency))
         return scores

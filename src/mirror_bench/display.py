@@ -49,9 +49,7 @@ def render_bench(
     bottom_cut = n - top_cut
 
     for rank, s in enumerate(scores_list, start=1):
-        if s.probe.error:
-            color = "dim"
-        elif rank <= top_cut:
+        if rank <= top_cut:
             color = "green"
         elif rank > bottom_cut:
             color = "red"
@@ -135,6 +133,7 @@ def render_csv(
             "security_score",
             "composite",
             "error",
+            "throughput_error",
         ]
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
@@ -162,6 +161,7 @@ def render_csv(
                     "security_score": f"{s.security_score:.2f}",
                     "composite": f"{s.composite:.4f}",
                     "error": s.probe.error or "",
+                    "throughput_error": _throughput_error(s) or "",
                 }
             )
         return
@@ -231,6 +231,14 @@ def _fmt_bps(bps: float | None) -> str:
     return f"{kb:.0f} KB/s"
 
 
+def _throughput_error(s: Score) -> str | None:
+    """Why phase 2 gave no measurement; None when it worked or did not run."""
+    probe = s.throughput_probe
+    if probe is None or probe.ok:
+        return None
+    return probe.error or f"http_{probe.status}"
+
+
 def _mirror_dict(m: Mirror) -> dict[str, Any]:
     return {
         "url": m.url,
@@ -253,6 +261,7 @@ def _score_dict(s: Score) -> dict[str, Any]:
         "cert_valid": s.probe.cert_valid,
         "status": s.probe.status,
         "error": s.probe.error,
+        "throughput_error": _throughput_error(s),
     }
 
 

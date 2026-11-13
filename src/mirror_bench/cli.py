@@ -188,6 +188,9 @@ def bench_cmd(
         weights=_parse_weights(weights),
         skip_throughput=no_throughput,
     )
+    if no_throughput and cfg.weights.latency + cfg.weights.security <= 0:
+        msg = "--no-throughput needs a latency or security weight above zero"
+        raise typer.BadParameter(msg)
 
     try:
         scores = asyncio.run(_run_bench(host, cfg, quiet=json_out or csv_out))
@@ -315,6 +318,7 @@ async def _run_bench(host: HostInfo, cfg: BenchConfig, *, quiet: bool) -> list[S
                     on_progress=on_prog,
                 )
 
+        latency_results = scorer.prefer_https(latency_results)
         if cfg.tls13_only:
             latency_results = scorer.filter_for_policy(
                 latency_results, https_only=False, tls13_only=True
@@ -324,7 +328,7 @@ async def _run_bench(host: HostInfo, cfg: BenchConfig, *, quiet: bool) -> list[S
         ok_results.sort(key=lambda r: r.ttfb_ms or float("inf"))
         top_for_phase2 = ok_results[: cfg.top]
 
-        throughput_map: dict[str, ProbeResult] = {}
+        throughput_map: dict[str, ProbeResult] | None = None
         if not cfg.skip_throughput and top_for_phase2:
             phase2_mirrors = [r.mirror for r in top_for_phase2]
             phase2_concurrency = min(8, cfg.concurrency)

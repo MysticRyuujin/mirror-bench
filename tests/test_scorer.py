@@ -1,6 +1,10 @@
 """Scorer pure-function tests."""
 
-from mirror_bench.benchmark.scorer import filter_for_policy, score_results
+from mirror_bench.benchmark.scorer import (
+    filter_for_policy,
+    prefer_https,
+    score_results,
+)
 from mirror_bench.models import Mirror, ProbeResult, Weights
 
 
@@ -121,12 +125,13 @@ def test_filter_tls13_only() -> None:
 
 
 def test_security_score_values() -> None:
-    # All security features → 3.5
+    # All security features → 2.5
     full = make_probe(
         url="https://x.example.org/u/", tls="TLSv1.3", http="HTTP/2", cert_valid=True
     )
     scores = score_results([full], None, Weights(latency=0, throughput=0, security=1.0))
-    assert scores[0].security_score == 3.5
+    assert scores[0].security_score == 2.5
+    assert scores[0].composite == 1.0
 
     # http only → 0
     plain = make_probe(
@@ -149,3 +154,56 @@ def test_throughput_https_downgrade_excludes_mirror() -> None:
     }
     scores = score_results([good, bad], tput_map, Weights())
     assert [s.mirror.host for s in scores] == ["good.example.org"]
+
+
+def test_latency_phase_rate_is_not_reported_as_throughput() -> None:
+    a = make_probe(url="https://a.example.org/u/", bps=20_000.0)
+    empty: dict[str, ProbeResult] = {}
+    for tput_map in (None, empty):
+        scores = score_results([a], tput_map, Weights())
+        assert scores[0].throughput_bps is None
+
+
+def test_failed_throughput_ranks_below_measured_throughput() -> None:
+    measured = make_probe(url="https://measured.example.org/u/", bps=90_000.0)
+    failed = make_probe(url="https://failed.example.org/u/", bps=90_000.0)
+    tput_map = {
+        measured.mirror.url: make_probe(url=measured.mirror.url, bps=1_000_000.0),
+        failed.mirror.url: make_probe(
+            url=failed.mirror.url, bps=None, status=404, error="http_404"
+        ),
+    }
+    scores = score_results([failed, measured], tput_map, Weights())
+    assert [s.mirror.host for s in scores] == [
+        "measured.example.org",
+        "failed.example.org",
+    ]
+    assert scores[1].throughput_bps is None
+    assert scores[1].throughput_probe is not None
+
+
+def test_skipped_throughput_carries_no_weight() -> None:
+    fast = make_probe(url="https://fast.example.org/u/", ttfb_ms=10.0)
+    slow = make_probe(url="https://slow.example.org/u/", ttfb_ms=100.0)
+    scores = score_results([slow, fast], None, Weights())
+    # Latency 0.4 and security 0.2 renormalize to 2/3 and 1/3.
+    assert scores[0].mirror.host == "fast.example.org"
+    assert scores[0].composite == 1.0
+    assert abs(scores[1].composite - 1 / 3) < 1e-9
+
+
+def test_prefer_https_drops_http_twin_of_a_working_https_mirror() -> None:
+    https_ok = make_probe(url="https://a.example.org/debian/")
+    http_twin = make_probe(url="http://a.example.org/debian/", tls=None)
+    https_dead = make_probe(
+        url="https://b.example.org/debian/", status=None, error="ConnectError"
+    )
+    http_only = make_probe(url="http://b.example.org/debian/", tls=None)
+    other_path = make_probe(url="http://a.example.org/other/", tls=None)
+    kept = prefer_https([https_ok, http_twin, https_dead, http_only, other_path])
+    assert [r.mirror.url for r in kept] == [
+        "https://a.example.org/debian/",
+        "https://b.example.org/debian/",
+        "http://b.example.org/debian/",
+        "http://a.example.org/other/",
+    ]

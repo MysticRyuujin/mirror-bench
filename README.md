@@ -10,7 +10,7 @@
 
 A cross-distribution Linux package mirror benchmarking tool.
 
-Ranks mirrors by **latency**, **throughput**, and **security** (HTTPS / TLS 1.3 / cert validity / HTTP/2).
+Ranks mirrors by **latency**, **throughput**, and **security** (HTTPS / TLS 1.3 / HTTP/2).
 
 `mirror-bench` is **read-only**: it discovers mirrors, probes them, prints a
 ranked table, and exits. It never touches `/etc/apt/sources.list`,
@@ -397,8 +397,15 @@ The mirror lists for those distributions cover x86_64 mirrors only.
    `http://` mirror gets no TLS credit, even when it redirects to HTTPS.
 
 4. **Score.** Weighted composite of normalized latency (inverse), throughput,
-   and security (HTTPS + TLS 1.3 + cert-valid + HTTP/2, max 3.5). Weights
+   and security (HTTPS 1 + TLS 1.3 1 + HTTP/2 0.5, max 2.5). Weights
    default to `lat=0.4, thr=0.4, sec=0.2` and are user-overridable.
+   - Throughput is the phase 2 measurement only. A mirror whose phase 2 probe
+     fails shows `-`, scores 0 for throughput, and reports the cause in the
+     `throughput_error` field of the JSON and CSV output.
+   - With `--no-throughput`, the throughput weight is 0 and the other weights
+     are normalized again.
+   - When a site answers on `https://` and `http://`, only the `https://` row
+     is kept.
 5. **Render.** A `rich.Table`, or JSON / CSV for scripting.
 
 ## Development

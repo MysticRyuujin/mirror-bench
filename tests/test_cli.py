@@ -220,6 +220,14 @@ def test_no_subcommand_runs_bench_with_option_defaults() -> None:
         ["bench", "--distro", "ubuntu", "--weights", "lat=nan"],
         ["bench", "--distro", "ubuntu", "--weights", "lat=inf"],
         ["bench", "--distro", "ubuntu", "--weights", "lat=0,thr=0,sec=0"],
+        [
+            "bench",
+            "--distro",
+            "ubuntu",
+            "--no-throughput",
+            "--weights",
+            "thr=1,lat=0,sec=0",
+        ],
     ],
 )
 def test_invalid_option_values_are_usage_errors(args: list[str]) -> None:
@@ -238,3 +246,22 @@ def test_discovery_failure_exits_1_without_traceback(command: str) -> None:
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)
     assert "could not discover ubuntu mirrors" in result.output
+
+
+@respx.mock
+def test_bench_keeps_one_row_when_https_and_http_both_work() -> None:
+    respx.get("https://mirror-master.debian.org/status/Mirrors.masterlist").respond(
+        200, text="Site: mir-a.org\nCountry: US United States\nArchive-http: /debian/\n"
+    )
+    for scheme in ("https", "http"):
+        respx.get(f"{scheme}://mir-a.org/debian/dists/trixie/InRelease").respond(
+            206, content=b"x" * 1024
+        )
+    result = runner.invoke(
+        app, ["bench", "--distro", "debian", "--no-throughput", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    results = json.loads(result.output)["results"]
+    assert [r["mirror"]["url"] for r in results] == ["https://mir-a.org/debian/"]
+    assert results[0]["throughput_bps"] is None
+    assert results[0]["throughput_error"] is None

@@ -18,6 +18,7 @@ src/mirror_bench/
     transport.py      shared httpx.AsyncClient factory
     probe.py          two-phase async orchestration (TaskGroup + semaphore)
     tls.py            TLS version / cert inspection via response.extensions
+    h3.py             HTTP/3 discovery from the Alt-Svc header
     scorer.py         weighted composite ranking
   display.py          rich.Table + JSON/CSV emitters
 

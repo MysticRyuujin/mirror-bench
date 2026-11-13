@@ -356,3 +356,46 @@ async def test_throughput_empty_body_is_an_error(client: httpx.AsyncClient) -> N
     r = await _throughput(client, _mirror())
     assert not r.ok
     assert r.error == "empty_body"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_latency_probe_records_advertised_http3(
+    client: httpx.AsyncClient,
+) -> None:
+    respx.get(_LATENCY_URL).respond(
+        206, content=b"x" * _KIB, headers={"Alt-Svc": 'h3=":443"; ma=3600'}
+    )
+    r = await _latency(client, _mirror())
+    assert r.h3_port == 443
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_http3_advertisement_over_plain_http_is_ignored(
+    client: httpx.AsyncClient,
+) -> None:
+    plain = "http://mirror.example.org/ubuntu/dists/noble/InRelease"
+    respx.get(plain).respond(
+        206, content=b"x" * _KIB, headers={"Alt-Svc": 'h3=":443"; ma=3600'}
+    )
+    r = await _latency(client, _mirror("http://mirror.example.org/ubuntu/"))
+    assert r.ok
+    assert r.h3_port is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_http3_port_comes_from_the_origin_that_answered(
+    client: httpx.AsyncClient,
+) -> None:
+    target = "https://edge.example.org/ubuntu/dists/noble/InRelease"
+    respx.get(_LATENCY_URL).respond(
+        302, headers={"Location": target, "Alt-Svc": 'h3=":443"'}
+    )
+    respx.get(target).respond(
+        206, content=b"x" * _KIB, headers={"Alt-Svc": 'h3=":8443"'}
+    )
+    r = await _latency(client, _mirror())
+    assert r.final_url == target
+    assert r.h3_port == 8443

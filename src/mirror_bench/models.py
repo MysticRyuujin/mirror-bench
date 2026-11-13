@@ -56,6 +56,7 @@ class ProbeResult:
     cert_valid: bool | None
     error: str | None = None
     final_url: str | None = None
+    h3_port: int | None = None
 
     @property
     def ok(self) -> bool:

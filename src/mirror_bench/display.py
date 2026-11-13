@@ -43,6 +43,7 @@ def render_bench(
     table.add_column("HTTPS")
     table.add_column("TLS")
     table.add_column("HTTP/2")
+    table.add_column("HTTP/3")
     table.add_column("Score", justify="right")
 
     top_cut = max(1, n // 5)
@@ -65,6 +66,7 @@ def render_bench(
             _yes_no(s.mirror.is_https),
             s.probe.tls_version or "-",
             _yes_no(s.probe.http_version in {"HTTP/2", "HTTP/2.0"}),
+            "adv" if s.probe.h3_port is not None else "-",
             f"{s.composite:.3f}",
         )
 
@@ -134,6 +136,7 @@ def render_csv(
             "composite",
             "error",
             "throughput_error",
+            "h3_advertised",
         ]
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
@@ -162,6 +165,7 @@ def render_csv(
                     "composite": f"{s.composite:.4f}",
                     "error": s.probe.error or "",
                     "throughput_error": _throughput_error(s) or "",
+                    "h3_advertised": "true" if s.probe.h3_port is not None else "false",
                 }
             )
         return
@@ -262,6 +266,7 @@ def _score_dict(s: Score) -> dict[str, Any]:
         "status": s.probe.status,
         "error": s.probe.error,
         "throughput_error": _throughput_error(s),
+        "h3_advertised": s.probe.h3_port is not None,
     }
 
 

@@ -408,6 +408,13 @@ The mirror lists for those distributions cover x86_64 mirrors only.
      is kept.
 5. **Render.** A `rich.Table`, or JSON / CSV for scripting.
 
+### HTTP/3
+
+Phase 1 reads the `Alt-Svc` response header. The `HTTP/3` column shows `adv`
+when a mirror advertises HTTP/3 (`h3`) for its own host; JSON and CSV carry
+the same fact as `h3_advertised`. This has no effect on the score: apt, dnf,
+and pacman do not use HTTP/3 today.
+
 ## Development
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full dev loop.

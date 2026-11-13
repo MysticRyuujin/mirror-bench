@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from mirror_bench.benchmark import h3
 from mirror_bench.benchmark import tls as tls_mod
 from mirror_bench.models import HostInfo, Mirror, ProbeResult
 
@@ -126,6 +127,14 @@ def _failed(
     )
 
 
+def _h3_port(resp: httpx.Response) -> int | None:
+    # Alt-Svc is only valid from a secure origin, and it describes the origin
+    # that answered, which after a redirect is not the listed one.
+    if resp.url.scheme != "https":
+        return None
+    return h3.parse_alt_svc(resp.headers.get("alt-svc"))
+
+
 def _tls_fields(
     mirror: Mirror, resp: httpx.Response | None
 ) -> tuple[str | None, bool | None]:
@@ -202,6 +211,7 @@ async def _latency_probe(
         cert_valid=cert_valid,
         error=None,
         final_url=str(last_resp.url),
+        h3_port=_h3_port(last_resp),
     )
 
 

@@ -46,11 +46,14 @@ LABEL org.opencontainers.image.title="mirror-bench" \
 # We deliberately do not pin ca-certificates: the whole point of this package
 # is to ship the latest Debian-security-vetted CA list at build time. Pinning
 # a specific version would freeze trust material and defeat the upgrade path.
+# The runtime never installs anything, so pip goes too: its vendored copies of
+# urllib3, msgpack, and setuptools are what image scanners report.
 # hadolint ignore=DL3008
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
+ && python -m pip uninstall --yes --no-cache-dir pip \
  && groupadd --system --gid 65532 app \
  && useradd --system --uid 65532 --gid app \
         --home-dir /home/app --create-home --shell /usr/sbin/nologin app

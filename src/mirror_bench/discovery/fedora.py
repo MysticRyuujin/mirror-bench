@@ -27,6 +27,7 @@ from mirror_bench.discovery.base import (
     host_of,
     with_https_candidates,
 )
+from mirror_bench.distro import DEFAULT_FEDORA_RELEASE
 from mirror_bench.models import HostInfo, Mirror
 
 if TYPE_CHECKING:
@@ -34,7 +35,6 @@ if TYPE_CHECKING:
 
 _MIRRORLIST = "https://mirrors.fedoraproject.org/mirrorlist"
 
-_DEFAULT_RELEASE = "45"
 _REVISION_RE = re.compile(rb"<revision>(\d+)</revision>")
 _RELEASE_TREE_RE = re.compile(r"/releases/[^/]+/Everything/[^/]+/os/\Z")
 
@@ -78,7 +78,7 @@ class FedoraDiscoverer(MirrorDiscoverer):
         host: HostInfo,
         countries: tuple[str, ...] = (),
     ) -> list[Mirror]:
-        repo = f"fedora-{host.release_version or _DEFAULT_RELEASE}"
+        repo = f"fedora-{host.release_version or DEFAULT_FEDORA_RELEASE}"
         base_params: dict[str, str] = {"repo": repo, "arch": host.arch}
 
         if countries:
@@ -92,7 +92,7 @@ class FedoraDiscoverer(MirrorDiscoverer):
         # mirror stopped syncing. The updates tree is rewritten on each push.
         # Mirror URLs end in releases/<ver>/Everything/<arch>/os/; the updates
         # tree is a sibling of releases/.
-        release = host.release_version or _DEFAULT_RELEASE
+        release = host.release_version or DEFAULT_FEDORA_RELEASE
         return (
             f"../../../../../updates/{release}/Everything/{host.arch}"
             "/repodata/repomd.xml"

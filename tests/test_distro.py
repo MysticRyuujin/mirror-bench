@@ -19,6 +19,11 @@ def test_from_override_release_for_apt_sets_codename() -> None:
     assert host.release_version is None
 
 
+def test_from_override_fedora_without_release_uses_the_default() -> None:
+    host = distro.from_override("fedora")
+    assert host.release_version == distro.DEFAULT_FEDORA_RELEASE
+
+
 def test_from_override_release_for_fedora_sets_version() -> None:
     host = distro.from_override("fedora", release="42")
     assert host.codename is None

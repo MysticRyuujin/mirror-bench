@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0](https://github.com/MysticRyuujin/mirror-bench/compare/v0.2.0...v0.3.0) (2026-11-13)
+
+
+### Features
+
+* measure mirror freshness and drop stale mirrors ([#18](https://github.com/MysticRyuujin/mirror-bench/issues/18)) ([462ac42](https://github.com/MysticRyuujin/mirror-bench/commit/462ac42017f1026c6892701aaa0452b791a0c498))
+
+
+### Bug Fixes
+
+* make completion work without click, and reject error pages as probes ([#19](https://github.com/MysticRyuujin/mirror-bench/issues/19)) ([0c2427d](https://github.com/MysticRyuujin/mirror-bench/commit/0c2427dcb949f394e0118a386407d215d732465b))
+* try https for mirrors listed as http, and write plain output with no TTY ([#17](https://github.com/MysticRyuujin/mirror-bench/issues/17)) ([07d38ee](https://github.com/MysticRyuujin/mirror-bench/commit/07d38eec00a0c5669a728723a13a9d805f6113c8))
+
+
+### Dependencies
+
+* **actions:** match action versions in integration.yml ([#15](https://github.com/MysticRyuujin/mirror-bench/issues/15)) ([35da73d](https://github.com/MysticRyuujin/mirror-bench/commit/35da73d052acf4f1ea67c2f14f4df0b09a8b8c98))
+
 ## [0.2.0](https://github.com/MysticRyuujin/mirror-bench/compare/v0.1.2...v0.2.0) (2026-11-13)
 
 

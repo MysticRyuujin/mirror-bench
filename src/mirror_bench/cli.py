@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+from collections import Counter
 from dataclasses import replace
 
 import typer
@@ -13,6 +14,7 @@ from rich.progress import (
     TextColumn,
     TimeElapsedColumn,
 )
+from typer._completion_shared import get_completion_script
 from typer.core import TyperGroup
 
 from mirror_bench import display
@@ -112,7 +114,13 @@ SkipThroughputOpt = typer.Option(
 def _parse_countries(raw: str | None) -> tuple[str, ...]:
     if not raw:
         return ()
-    return tuple(c.strip().upper() for c in raw.split(",") if c.strip())
+    codes = tuple(c.strip().upper() for c in raw.split(",") if c.strip())
+    for code in codes:
+        # Codes go into mirror-list URLs, so only real alpha-2 shapes pass.
+        if len(code) != 2 or not code.isascii() or not code.isalpha():
+            msg = f"bad --country code {code!r}; expected two letters, e.g. US"
+            raise typer.BadParameter(msg)
+    return codes
 
 
 def _parse_weights(raw: str | None) -> Weights:
@@ -251,8 +259,6 @@ def completion_cmd(
     depend on shell auto-detection and works reliably in sandboxes, CI, and
     containers. Pipe the output to your shell's completion directory.
     """
-    from click.shell_completion import shell_complete
-
     shell = shell.lower()
     if shell not in {"bash", "zsh", "fish"}:
         typer.secho(
@@ -262,12 +268,16 @@ def completion_cmd(
         )
         raise typer.Exit(code=2)
 
-    prog = "mirror-bench"
-    env_var = "_MIRROR_BENCH_COMPLETE"
-    cli = typer.main.get_command(app)
-    rc = shell_complete(cli, {}, prog, env_var, f"{shell}_source")
-    if rc != 0:
-        raise typer.Exit(code=rc)
+    # typer's own generator: recent typer releases bundle their CLI layer and
+    # no longer install click, so click cannot be imported here.
+    typer.echo(
+        get_completion_script(
+            prog_name="mirror-bench",
+            complete_var="_MIRROR_BENCH_COMPLETE",
+            # The keyword names the target shell; no command is executed.
+            shell=shell,  # nosec B604
+        )
+    )
 
 
 @app.command("list")
@@ -350,6 +360,18 @@ async def _run_bench(host: HostInfo, cfg: BenchConfig, *, quiet: bool) -> list[S
                     samples=cfg.samples,
                     on_progress=on_prog,
                 )
+
+        if not any(r.ok for r in latency_results):
+            # An empty table with no reason is the usual result of a wrong
+            # --release, so say what the mirrors answered.
+            reasons = Counter(r.error or f"http_{r.status}" for r in latency_results)
+            typer.secho(
+                f"no mirror passed the latency probe ({len(latency_results)} tried; "
+                f"most common failure: {reasons.most_common(1)[0][0]}). "
+                "Check the release name.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
 
         # Stale endpoints go first: prefer_https would otherwise keep a stale
         # https:// endpoint and discard its current http:// twin.

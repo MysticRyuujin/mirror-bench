@@ -22,7 +22,7 @@ from tests.test_scorer import make_probe
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from click.testing import Result
+    from typer.testing import Result
 
 runner = CliRunner()
 

@@ -20,16 +20,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 
-# Build the wheel, then install it (+ runtime deps) into a self-contained venv
-# under /opt/venv. No dev deps, no sources, no uv binary in the final image.
+# Build the wheel, then install it into a self-contained venv under /opt/venv.
+# Runtime deps come from uv.lock, so the image runs the same versions that CI
+# tests; resolving at build time would pull whatever is newest that day.
+# No dev deps, no sources, no uv binary in the final image.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /opt/venv \
+ && uv export --frozen --no-dev --no-emit-project --format requirements.txt \
+      --output-file /tmp/requirements.txt \
+ && VIRTUAL_ENV=/opt/venv uv pip install --no-cache --require-hashes \
+      -r /tmp/requirements.txt \
  && uv build --wheel \
  && wheel=$(find dist -maxdepth 1 -name '*.whl' -print -quit) \
- && VIRTUAL_ENV=/opt/venv uv pip install --no-cache "${wheel}"
+ && VIRTUAL_ENV=/opt/venv uv pip install --no-cache --no-deps "${wheel}"
 
 # ---- Runtime stage -------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime

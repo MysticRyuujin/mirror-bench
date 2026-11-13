@@ -1,6 +1,7 @@
 """CLI tests using typer.testing.CliRunner."""
 
 import json
+import sys
 from unittest import mock
 
 import httpx
@@ -140,6 +141,15 @@ def test_completion_emits_bash_script() -> None:
     assert "_MIRROR_BENCH_COMPLETE" in result.output
 
 
+def test_completion_does_not_need_click(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Recent typer releases do not install click.
+    monkeypatch.setitem(sys.modules, "click", None)
+    monkeypatch.setitem(sys.modules, "click.shell_completion", None)
+    result = runner.invoke(app, ["completion", "zsh"])
+    assert result.exit_code == 0, result.output
+    assert "#compdef mirror-bench" in result.output
+
+
 def test_completion_emits_zsh_script() -> None:
     result = runner.invoke(app, ["completion", "zsh"])
     assert result.exit_code == 0, result.output
@@ -193,7 +203,12 @@ def test_release_flag_short_form_accepted() -> None:
 
 
 @respx.mock
-def test_no_subcommand_runs_bench_with_option_defaults() -> None:
+def test_no_subcommand_runs_bench_with_option_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # With an empty argument list the runner reads sys.argv, as the installed
+    # command does; without this it would read pytest's own arguments.
+    monkeypatch.setattr("sys.argv", ["mirror-bench"])
     fake = {"ID": "ubuntu", "VERSION_CODENAME": "noble", "VERSION_ID": "24.04"}
     _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
     respx.get("https://mir-a.org/ubuntu/dists/noble-updates/InRelease").respond(
@@ -217,6 +232,9 @@ def test_no_subcommand_runs_bench_with_option_defaults() -> None:
         ["bench", "--distro", "ubuntu", "--json", "--csv"],
         ["list", "--distro", "ubuntu", "--json", "--csv"],
         ["bench", "--distro", "ubuntu", "--max-age", "-1"],
+        ["bench", "--distro", "ubuntu", "--country", "../x"],
+        ["bench", "--distro", "ubuntu", "--country", "USA"],
+        ["list", "--distro", "ubuntu", "--country", "U1"],
         ["bench", "--distro", "ubuntu", "--max-age", "nan"],
         ["bench", "--distro", "ubuntu", "--max-age", "inf"],
         ["bench", "--distro", "ubuntu", "--weights", "lat=-1"],
@@ -412,3 +430,18 @@ def test_bench_table_keeps_color_through_a_pipe_by_default(
     assert result.exit_code == 0, result.output
     assert "\x1b[" in result.stdout
     assert "\x1b" not in result.stderr
+
+
+@respx.mock
+def test_bench_says_why_when_no_mirror_answers() -> None:
+    _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
+    respx.get("https://mir-a.org/ubuntu/dists/nosuch-updates/InRelease").respond(
+        404, content=b"<html><body>404 Not Found</body></html>"
+    )
+    result = runner.invoke(
+        app, ["bench", "--distro", "ubuntu", "--release", "nosuch", "--json"]
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["results"] == []
+    assert "no mirror passed the latency probe (1 tried" in result.stderr
+    assert "http_404" in result.stderr

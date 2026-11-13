@@ -9,21 +9,26 @@ this repo. Humans should read `README.md` + `CONTRIBUTING.md` instead.
 src/mirror_bench/
   cli.py              typer app, subcommands `bench`, `list`, `completion`
   distro.py           /etc/os-release parsing + derivative alias table +
-                      structured exceptions (UnsupportedDistroError, etc.)
+                      default codenames + structured exceptions
+                      (UnsupportedDistroError, etc.)
   models.py           Mirror, ProbeResult, Score, Weights, BenchConfig, HostInfo
   discovery/          per-distro mirror fetchers (ABC + 5 impls +
-                      UnknownDiscovererError)
+                      DiscoveryError, UnknownDiscovererError)
   benchmark/
     transport.py      shared httpx.AsyncClient factory
     probe.py          two-phase async orchestration (TaskGroup + semaphore)
     tls.py            TLS version / cert inspection via response.extensions
+    h3.py             HTTP/3 discovery from the Alt-Svc header + optional
+                      QUIC probe orchestration (--http3)
+    h3_quic.py        aioquic client; imported only through h3.py (optional
+                      `http3` extra, not a runtime dependency)
     scorer.py         weighted composite ranking
   display.py          rich.Table + JSON/CSV emitters
 
 tests/
   fixtures/           captured mirror-list bodies per distro
   test_*.py           respx-mocked units + @pytest.mark.integration opt-ins
-                      (45 tests, 2 integration-gated)
+                      (integration.yml runs the opt-ins each week)
 ```
 
 ## Commands (use these, not ad-hoc ones)
@@ -100,7 +105,8 @@ Run a single test: `uv run pytest tests/test_scorer.py::test_weights_shift_ranki
 - Don't skip hooks (`--no-verify`), nor add `# type: ignore` / `# noqa` /
   `# nosec` without a one-line reason at the call site.
 - Don't introduce new runtime dependencies without a strong reason — three
-  (`httpx[http2]`, `typer`, `rich`) is the budget.
+  (`httpx[http2]`, `typer`, `rich`) is the budget. `aioquic` is an optional
+  extra (`http3`): import it only in `benchmark/h3_quic.py`.
 - Don't expand `[tool.ruff.lint] select` without a concrete bug class in mind.
 - Don't emit rich output to stdout when `--json` or `--csv` is set.
 - Don't rely on network access in unit tests. Network-touching tests must be
@@ -111,6 +117,9 @@ Run a single test: `uv run pytest tests/test_scorer.py::test_weights_shift_ranki
 - **Mypy error.** Fix the types. `# type: ignore` is not allowed in this
   codebase — if you think you need one, you're probably modelling something
   wrong.
+- **Scheduled integration run fails.** First check for upstream drift: a
+  moved file, a renamed list field, an end-of-life default release. Fix the
+  path or default and refresh the fixture to match the live format.
 - **Integration test flaky.** Real mirrors come and go. If reproducible,
   tighten the assertion or bump tolerance. Don't add retries to runtime code
   just to paper over a test.

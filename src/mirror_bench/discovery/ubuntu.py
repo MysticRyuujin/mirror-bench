@@ -5,14 +5,20 @@ full list), so without an explicit --country we sweep a default set of mirror-ri
 countries to build a representative candidate pool.
 """
 
-import httpx
+from typing import TYPE_CHECKING
 
 from mirror_bench.discovery.base import (
     MirrorDiscoverer,
     ensure_trailing_slash,
+    fetch,
+    fetch_all,
     host_of,
 )
+from mirror_bench.distro import DEFAULT_CODENAMES
 from mirror_bench.models import HostInfo, Mirror
+
+if TYPE_CHECKING:
+    import httpx
 
 _FULL_LIST = "http://mirrors.ubuntu.com/mirrors.txt"
 _COUNTRY_LIST = "http://mirrors.ubuntu.com/{cc}.txt"
@@ -51,27 +57,24 @@ class UbuntuDiscoverer(MirrorDiscoverer):
         host: HostInfo,
         countries: tuple[str, ...] = (),
     ) -> list[Mirror]:
+        targets = [c.upper() for c in (countries or _DEFAULT_COUNTRIES)]
+        responses = await fetch_all(
+            client, [(_COUNTRY_LIST.format(cc=cc), None) for cc in targets]
+        )
         entries: list[tuple[str, str | None]] = []
-        targets = countries or _DEFAULT_COUNTRIES
-        for country_code in targets:
-            try:
-                resp = await client.get(_COUNTRY_LIST.format(cc=country_code.upper()))
-            except httpx.HTTPError:
-                continue
-            if resp.status_code == 200:
-                entries.extend(
-                    (u, country_code.upper()) for u in _parse_list(resp.text)
-                )
+        for cc, resp in zip(targets, responses, strict=True):
+            if resp is not None and resp.status_code == 200:
+                entries.extend((u, cc) for u in _parse_list(resp.text))
 
-        # Fallback: if per-country sweep returned nothing, use the geo-nearest URL.
-        if not entries:
-            resp = await client.get(_FULL_LIST)
-            resp.raise_for_status()
-            entries.extend((u, None) for u in _parse_list(resp.text))
+        # The geo-nearest list has no country data, so it must not stand in for
+        # a country the caller asked for.
+        if not entries and not countries:
+            full = await fetch(client, self.distro, _FULL_LIST)
+            entries.extend((u, None) for u in _parse_list(full.text))
 
         seen: set[str] = set()
         mirrors: list[Mirror] = []
-        for url, cc in entries:
+        for url, country in entries:
             if url in seen:
                 continue
             seen.add(url)
@@ -79,34 +82,26 @@ class UbuntuDiscoverer(MirrorDiscoverer):
                 Mirror(
                     url=ensure_trailing_slash(url),
                     host=host_of(url),
-                    country=cc,
-                    protocols=_protocols_from(url),
+                    country=country,
+                    protocols=("https" if url.startswith("https://") else "http",),
                 )
             )
         return mirrors
 
     def probe_path(self, host: HostInfo) -> str:
-        codename = host.codename or "noble"
+        codename = host.codename or DEFAULT_CODENAMES[self.distro]
         return f"dists/{codename}/InRelease"
 
     def throughput_path(self, host: HostInfo) -> str:
-        codename = host.codename or "noble"
-        return f"dists/{codename}/main/Contents-{host.apt_arch}.gz"
+        # These lists cover archive mirrors, which carry amd64 and i386 only;
+        # other architectures live on ports.ubuntu.com.
+        codename = host.codename or DEFAULT_CODENAMES[self.distro]
+        return f"dists/{codename}/Contents-amd64.gz"
 
 
 def _parse_list(text: str) -> list[str]:
-    out: list[str] = []
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        out.append(line)
-    return out
-
-
-def _protocols_from(url: str) -> tuple[str, ...]:
-    if url.startswith("https://"):
-        return ("https",)
-    if url.startswith("http://"):
-        return ("http",)
-    return ()
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip().startswith(("http://", "https://"))
+    ]

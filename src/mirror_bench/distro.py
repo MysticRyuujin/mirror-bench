@@ -11,6 +11,9 @@ _CODENAME_DISTROS: frozenset[str] = frozenset({"ubuntu", "debian", "mint"})
 
 SUPPORTED: frozenset[str] = frozenset({"ubuntu", "debian", "fedora", "mint", "arch"})
 
+# Only derivatives that install from the base distro's own mirror network.
+# Distros with separate mirrors (RHEL family, Kali, Manjaro, ...) are left out:
+# ranking another distro's mirrors for them would be wrong.
 _ALIASES: dict[str, str] = {
     "ubuntu": "ubuntu",
     "debian": "debian",
@@ -19,22 +22,18 @@ _ALIASES: dict[str, str] = {
     "mint": "mint",
     "arch": "arch",
     "archlinux": "arch",
-    "manjaro": "arch",
     "endeavouros": "arch",
     "pop": "ubuntu",
     "elementary": "ubuntu",
     "zorin": "ubuntu",
     "neon": "ubuntu",
-    "kali": "debian",
-    "parrot": "debian",
-    "devuan": "debian",
-    "raspbian": "debian",
-    "rocky": "fedora",
-    "almalinux": "fedora",
-    "centos": "fedora",
-    "rhel": "fedora",
     "nobara": "fedora",
-    "ol": "fedora",
+}
+
+DEFAULT_CODENAMES: dict[str, str] = {
+    "ubuntu": "noble",
+    "debian": "trixie",
+    "mint": "zena",
 }
 
 _CODENAME_FALLBACKS: dict[tuple[str, str], str] = {
@@ -59,7 +58,8 @@ class UnsupportedDistroError(DistroDetectionError):
         self.source = source
         self.supported: tuple[str, ...] = tuple(sorted(SUPPORTED))
         super().__init__(
-            f"unsupported {source} {distro!r}; supported: {list(self.supported)}"
+            f"unsupported {source} {distro!r}; "
+            f"pass --distro with one of {list(self.supported)}"
         )
 
 
@@ -95,7 +95,7 @@ def from_override(distro: str, release: str | None = None) -> HostInfo:
     codename: str | None
     release_version: str | None
     if base in _CODENAME_DISTROS:
-        codename = release or _default_codename(base)
+        codename = release or DEFAULT_CODENAMES[base]
         release_version = None
     elif base == "fedora":
         codename = None
@@ -137,12 +137,15 @@ def _host_info_from_os_release(info: dict[str, str]) -> HostInfo:
     distro_id = info.get("ID", "").lower()
     id_like = [x.lower() for x in info.get("ID_LIKE", "").split()]
     base = _ALIASES.get(distro_id)
-    if base is None:
-        for candidate in id_like:
-            base = _ALIASES.get(candidate)
-            if base is not None:
-                break
+    ubuntu_codename = info.get("UBUNTU_CODENAME") or None
+    # ID_LIKE alone does not prove a shared mirror network (Rocky is "like"
+    # fedora, Kali "like" debian). Ubuntu remixes that name the Ubuntu release
+    # they track are the one safe case.
+    if base is None and "ubuntu" in id_like and ubuntu_codename:
+        base = "ubuntu"
     codename = info.get("VERSION_CODENAME") or None
+    if base == "ubuntu" and distro_id != "ubuntu" and ubuntu_codename:
+        codename = ubuntu_codename
     version = info.get("VERSION_ID") or None
     if not codename and base and version:
         codename = _CODENAME_FALLBACKS.get((base, version))
@@ -162,12 +165,3 @@ def _normalized_arch() -> str:
     if machine in {"arm64", "aarch64"}:
         return "aarch64"
     return machine
-
-
-def _default_codename(base: str) -> str | None:
-    # Reasonable defaults when the user passes --distro without --codename.
-    return {
-        "ubuntu": "noble",
-        "debian": "bookworm",
-        "mint": "noble",
-    }.get(base)

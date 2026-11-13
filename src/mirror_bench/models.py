@@ -55,11 +55,13 @@ class ProbeResult:
     tls_version: str | None
     cert_valid: bool | None
     error: str | None = None
+    final_url: str | None = None
+    h3_port: int | None = None
 
     @property
     def ok(self) -> bool:
         return (
-            self.error is None and self.status is not None and 200 <= self.status < 400
+            self.error is None and self.status is not None and 200 <= self.status < 300
         )
 
 
@@ -74,6 +76,7 @@ class Score:
     composite: float
     probe: ProbeResult
     throughput_probe: ProbeResult | None = None
+    h3_probe: ProbeResult | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -109,3 +112,4 @@ class BenchConfig:
     weights: Weights = field(default_factory=Weights)
     samples: int = 3
     skip_throughput: bool = False
+    http3: bool = False

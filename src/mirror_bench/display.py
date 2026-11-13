@@ -43,15 +43,14 @@ def render_bench(
     table.add_column("HTTPS")
     table.add_column("TLS")
     table.add_column("HTTP/2")
+    table.add_column("HTTP/3")
     table.add_column("Score", justify="right")
 
     top_cut = max(1, n // 5)
     bottom_cut = n - top_cut
 
     for rank, s in enumerate(scores_list, start=1):
-        if s.probe.error:
-            color = "dim"
-        elif rank <= top_cut:
+        if rank <= top_cut:
             color = "green"
         elif rank > bottom_cut:
             color = "red"
@@ -67,6 +66,7 @@ def render_bench(
             _yes_no(s.mirror.is_https),
             s.probe.tls_version or "-",
             _yes_no(s.probe.http_version in {"HTTP/2", "HTTP/2.0"}),
+            _fmt_h3(s),
             f"{s.composite:.3f}",
         )
 
@@ -135,10 +135,15 @@ def render_csv(
             "security_score",
             "composite",
             "error",
+            "throughput_error",
+            "h3_advertised",
+            "h3_latency_ms",
+            "h3_error",
         ]
         writer = csv.DictWriter(stream, fieldnames=fieldnames)
         writer.writeheader()
         for rank, s in enumerate(list(scores), start=1):
+            h3_ms = _h3_latency_ms(s)
             writer.writerow(
                 {
                     "rank": rank,
@@ -162,6 +167,10 @@ def render_csv(
                     "security_score": f"{s.security_score:.2f}",
                     "composite": f"{s.composite:.4f}",
                     "error": s.probe.error or "",
+                    "throughput_error": _throughput_error(s) or "",
+                    "h3_advertised": "true" if s.probe.h3_port is not None else "false",
+                    "h3_latency_ms": f"{h3_ms:.2f}" if h3_ms is not None else "",
+                    "h3_error": _h3_error(s) or "",
                 }
             )
         return
@@ -231,6 +240,34 @@ def _fmt_bps(bps: float | None) -> str:
     return f"{kb:.0f} KB/s"
 
 
+def _throughput_error(s: Score) -> str | None:
+    """Why phase 2 gave no measurement; None when it worked or did not run."""
+    probe = s.throughput_probe
+    if probe is None or probe.ok:
+        return None
+    return probe.error or f"http_{probe.status}"
+
+
+def _h3_latency_ms(s: Score) -> float | None:
+    probe = s.h3_probe
+    return probe.ttfb_ms if probe is not None and probe.ok else None
+
+
+def _h3_error(s: Score) -> str | None:
+    """Why the QUIC probe failed; None when it worked or did not run."""
+    probe = s.h3_probe
+    if probe is None or probe.ok:
+        return None
+    return probe.error or f"http_{probe.status}"
+
+
+def _fmt_h3(s: Score) -> str:
+    """`yes`: a QUIC probe worked. `adv`: advertised, not confirmed."""
+    if s.h3_probe is not None and s.h3_probe.ok:
+        return "[green]yes[/green]"
+    return "adv" if s.probe.h3_port is not None else "-"
+
+
 def _mirror_dict(m: Mirror) -> dict[str, Any]:
     return {
         "url": m.url,
@@ -253,6 +290,10 @@ def _score_dict(s: Score) -> dict[str, Any]:
         "cert_valid": s.probe.cert_valid,
         "status": s.probe.status,
         "error": s.probe.error,
+        "throughput_error": _throughput_error(s),
+        "h3_advertised": s.probe.h3_port is not None,
+        "h3_latency_ms": _h3_latency_ms(s),
+        "h3_error": _h3_error(s),
     }
 
 

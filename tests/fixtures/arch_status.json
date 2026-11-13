@@ -21,6 +21,23 @@
       "details": ""
     },
     {
+      "url": "rsync://mirror.alpha.example.org/archlinux/",
+      "protocol": "rsync",
+      "last_sync": "2026-04-23T09:00:00Z",
+      "completion_pct": 1.0,
+      "delay": 3600,
+      "duration_avg": 0.5,
+      "duration_stddev": 0.1,
+      "score": 1.0,
+      "active": true,
+      "country": "United States",
+      "country_code": "US",
+      "isos": true,
+      "ipv4": true,
+      "ipv6": true,
+      "details": ""
+    },
+    {
       "url": "http://mirror.beta.example.org/archlinux/",
       "protocol": "http",
       "last_sync": "2026-04-23T08:00:00Z",

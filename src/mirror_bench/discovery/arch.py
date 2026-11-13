@@ -3,8 +3,10 @@
 from typing import TYPE_CHECKING
 
 from mirror_bench.discovery.base import (
+    DiscoveryError,
     MirrorDiscoverer,
     ensure_trailing_slash,
+    fetch,
     host_of,
 )
 from mirror_bench.models import HostInfo, Mirror
@@ -24,9 +26,11 @@ class ArchDiscoverer(MirrorDiscoverer):
         host: HostInfo,
         countries: tuple[str, ...] = (),
     ) -> list[Mirror]:
-        resp = await client.get(_STATUS_JSON)
-        resp.raise_for_status()
-        payload = resp.json()
+        resp = await fetch(client, self.distro, _STATUS_JSON)
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise DiscoveryError(self.distro, _STATUS_JSON, "invalid JSON") from exc
         wanted_cc = {c.upper() for c in countries}
         seen: set[str] = set()
         mirrors: list[Mirror] = []
@@ -34,7 +38,8 @@ class ArchDiscoverer(MirrorDiscoverer):
             if not entry.get("active"):
                 continue
             url = entry.get("url")
-            if not isinstance(url, str):
+            # The status list also carries rsync:// entries.
+            if not isinstance(url, str) or not url.startswith(("http://", "https://")):
                 continue
             country = (entry.get("country_code") or "").upper() or None
             if wanted_cc and (country is None or country not in wanted_cc):
@@ -42,9 +47,7 @@ class ArchDiscoverer(MirrorDiscoverer):
             if url in seen:
                 continue
             seen.add(url)
-            protocol = entry.get("protocol") or (
-                "https" if url.startswith("https://") else "http"
-            )
+            protocol = "https" if url.startswith("https://") else "http"
             mirrors.append(
                 Mirror(
                     url=ensure_trailing_slash(url),
@@ -59,4 +62,5 @@ class ArchDiscoverer(MirrorDiscoverer):
         return "lastsync"
 
     def throughput_path(self, host: HostInfo) -> str:
-        return f"core/os/{host.arch}/core.db"
+        # Official Arch mirrors carry x86_64 only, whatever the probing host is.
+        return "extra/os/x86_64/extra.db"

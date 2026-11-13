@@ -1,0 +1,42 @@
+---
+# Runs the opt-in integration tests against real mirror infrastructure.
+# Mirror lists, file paths, and release names change upstream without notice;
+# this is the only job that sees it. It is not a PR gate, because a failure
+# here is usually upstream drift, not a defect in the change under review.
+
+name: Integration
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.14"
+  UV_VERSION: "0.11.7"
+
+jobs:
+  integration:
+    name: Live mirrors
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv sync --frozen --all-extras
+      - name: pytest (integration)
+        run: make test-integration

@@ -4,10 +4,15 @@ import ssl
 
 import httpx
 
+from mirror_bench import __version__
+
 _DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=5.0, write=3.0, pool=5.0)
+_MAX_REDIRECTS = 3
 _DEFAULT_LIMITS = httpx.Limits(max_connections=100, max_keepalive_connections=20)
 
-USER_AGENT = "mirror-bench/0.1.0 (+https://github.com/MysticRyuujin/mirror-bench)"
+USER_AGENT = (
+    f"mirror-bench/{__version__} (+https://github.com/MysticRyuujin/mirror-bench)"
+)
 
 
 def build_client(
@@ -19,9 +24,8 @@ def build_client(
 ) -> httpx.AsyncClient:
     """Build the shared AsyncClient for discovery + probing.
 
-    follow_redirects defaults to True here because mirror lists often redirect once
-    to a canonical host. Probes set it explicitly to False where the extra hop would
-    contaminate timing.
+    Redirects are followed for probes too: a package manager pays for the extra
+    hop on each request, so the hop belongs in the measurement.
     """
     ctx: ssl.SSLContext | bool
     if verify:
@@ -35,6 +39,7 @@ def build_client(
         timeout=timeout or _DEFAULT_TIMEOUT,
         limits=_DEFAULT_LIMITS,
         follow_redirects=follow_redirects,
+        max_redirects=_MAX_REDIRECTS,
         verify=ctx,
         headers={"User-Agent": USER_AGENT},
     )

@@ -1,19 +1,31 @@
+Site: cdimage.example.org
+Country: SE Sweden
+Type: Origin
+CDImage-http: /debian-cd/
+CDImage-rsync: debian-cd/
+
+Site: deb.example.org
+Type: GeoDNS
+Archive-architecture: amd64 arm64 armel armhf i386 ppc64el riscv64 s390x
+Archive-http: /debian/
+Sponsor: Example CDN https://cdn.example.org/
+
 Site: mirror.alpha.example.org
 Country: US United States
 Location: Virginia
-Archive-architecture: ALL
+Archive-architecture: amd64 arm64 armel armhf i386 ppc64el riscv64 s390x
 Archive-http: /debian/
-Archive-https: /debian/
 Archive-rsync: debian/
+Sponsor: Example University https://www.example.org/
+Comment: offers ssh triggers - see https://www.debian.org/mirror/push_mirroring
 
 Site: mirror.beta.example.org
 Country: DE Germany
 Location: Frankfurt
-Archive-architecture: ALL
+Archive-architecture: amd64 i386
 Archive-http: /debian/
 
 Site: mirror.gamma.example.org
 Country: GB United Kingdom
-Location: London
-Archive-architecture: amd64 arm64
-Archive-https: /pub/debian/
+Archive-architecture: amd64
+Archive-http: /pub/linux/debian/

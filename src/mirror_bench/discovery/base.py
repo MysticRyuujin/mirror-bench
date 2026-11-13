@@ -1,13 +1,28 @@
 """Base interface for per-distro mirror discoverers."""
 
+import asyncio
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+import httpx
+
 if TYPE_CHECKING:
-    import httpx
+    from collections.abc import Sequence
 
     from mirror_bench.models import HostInfo, Mirror
+
+_SWEEP_CONCURRENCY = 8
+
+
+class DiscoveryError(RuntimeError):
+    """Raised when a distro's mirror list cannot be fetched or used."""
+
+    def __init__(self, distro: str, url: str, reason: str) -> None:
+        self.distro = distro
+        self.url = url
+        self.reason = reason
+        super().__init__(f"could not discover {distro} mirrors from {url}: {reason}")
 
 
 class MirrorDiscoverer(ABC):
@@ -32,6 +47,50 @@ class MirrorDiscoverer(ABC):
     @abstractmethod
     def throughput_path(self, host: HostInfo) -> str:
         """Relative path on each mirror used for the phase-2 throughput test."""
+
+
+async def fetch(
+    client: httpx.AsyncClient,
+    distro: str,
+    url: str,
+    *,
+    params: dict[str, str] | None = None,
+) -> httpx.Response:
+    """GET a mirror list that discovery cannot continue without."""
+    try:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise DiscoveryError(distro, url, f"HTTP {exc.response.status_code}") from exc
+    except httpx.HTTPError as exc:
+        raise DiscoveryError(distro, url, type(exc).__name__) from exc
+    return resp
+
+
+async def fetch_all(
+    client: httpx.AsyncClient,
+    requests: Sequence[tuple[str, dict[str, str] | None]],
+) -> list[httpx.Response | None]:
+    """GET optional (url, params) lists concurrently, in input order.
+
+    A request that fails yields None. No task raises, so the TaskGroup never
+    surfaces an ExceptionGroup to the caller.
+    """
+    sem = asyncio.Semaphore(_SWEEP_CONCURRENCY)
+    results: list[httpx.Response | None] = [None] * len(requests)
+
+    async def _one(idx: int, url: str, params: dict[str, str] | None) -> None:
+        async with sem:
+            try:
+                results[idx] = await client.get(url, params=params)
+            except httpx.HTTPError:
+                return
+
+    async with asyncio.TaskGroup() as tg:
+        for idx, (url, params) in enumerate(requests):
+            _ = tg.create_task(_one(idx, url, params))
+
+    return results
 
 
 def host_of(url: str) -> str:

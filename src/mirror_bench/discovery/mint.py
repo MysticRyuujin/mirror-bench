@@ -17,8 +17,10 @@ from typing import TYPE_CHECKING
 from mirror_bench.discovery.base import (
     MirrorDiscoverer,
     ensure_trailing_slash,
+    fetch,
     host_of,
 )
+from mirror_bench.distro import DEFAULT_CODENAMES
 from mirror_bench.models import HostInfo, Mirror
 
 if TYPE_CHECKING:
@@ -50,8 +52,7 @@ class MintDiscoverer(MirrorDiscoverer):
         host: HostInfo,
         countries: tuple[str, ...] = (),
     ) -> list[Mirror]:
-        resp = await client.get(_MIRRORS_PAGE)
-        resp.raise_for_status()
+        resp = await fetch(client, self.distro, _MIRRORS_PAGE)
         wanted_cc = {c.upper() for c in countries}
         seen: set[str] = set()
         mirrors: list[Mirror] = []
@@ -73,12 +74,14 @@ class MintDiscoverer(MirrorDiscoverer):
         return mirrors
 
     def probe_path(self, host: HostInfo) -> str:
-        codename = host.codename or "wilma"
-        return f"dists/{codename}/InRelease"
+        # Mint's repository publishes Release only, not InRelease.
+        codename = host.codename or DEFAULT_CODENAMES[self.distro]
+        return f"dists/{codename}/Release"
 
     def throughput_path(self, host: HostInfo) -> str:
-        codename = host.codename or "wilma"
-        return f"dists/{codename}/main/Contents-{host.apt_arch}.gz"
+        # Mint packages exist for amd64 and i386 only.
+        codename = host.codename or DEFAULT_CODENAMES[self.distro]
+        return f"dists/{codename}/main/Contents-amd64.gz"
 
 
 def _parse_repository_rows(html: str) -> list[tuple[str | None, str]]:

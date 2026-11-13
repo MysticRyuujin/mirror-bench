@@ -5,6 +5,50 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0](https://github.com/MysticRyuujin/mirror-bench/compare/v0.1.2...v0.2.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* follow redirects in probes and require a 2xx response; reject an https mirror that redirects to http
+* report throughput from phase 2 only; throughput_bps is null when phase 2 fails or is skipped
+* remove the certificate point from the security score; the maximum is 2.5
+* change default releases to Debian trixie, Mint zena, and Fedora 45
+* reject --json together with --csv
+* stop mapping distros with their own mirror network (rocky, almalinux, centos, rhel, ol, manjaro, kali, parrot, devuan, raspbian) to another distro
+
+### Features
+
+* add --http3 to confirm HTTP/3 with a QUIC probe (optional http3 extra) ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* add throughput_error to JSON and CSV output ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* report mirrors that advertise HTTP/3 (HTTP/3 column, h3_advertised) ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+
+
+### Bug Fixes
+
+* add a time limit to both probe phases ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* change default releases to Debian trixie, Mint zena, and Fedora 45 ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* correct probe and throughput paths for Ubuntu, Mint, Arch, and Fedora ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* **docker:** remove pip from the runtime image ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* drop rsync entries from Arch discovery ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* exit with code 1 and a message when discovery fails ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* follow redirects in probes and require a 2xx response; reject an https mirror that redirects to http ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* handle Debian records with no Country, and try https and http for each Debian site ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* reject --concurrency 0 and --top 0 ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* reject --json together with --csv ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* remove the certificate point from the security score; the maximum is 2.5 ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* report throughput from phase 2 only; throughput_bps is null when phase 2 fails or is skipped ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* run bench when no subcommand is given ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* stop mapping distros with their own mirror network (rocky, almalinux, centos, rhel, ol, manjaro, kali, parrot, devuan, raspbian) to another distro ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+
+
+### Dependencies
+
+* **actions:** bump actions/checkout ([#9](https://github.com/MysticRyuujin/mirror-bench/issues/9)) ([be49743](https://github.com/MysticRyuujin/mirror-bench/commit/be49743112ba6001b022bd3daec9c442a5925a66))
+* **actions:** bump actions/setup-python in the actions group ([#12](https://github.com/MysticRyuujin/mirror-bench/issues/12)) ([930680d](https://github.com/MysticRyuujin/mirror-bench/commit/930680da12de59dc3171385bcb3672399586f66f))
+* bump anyio, certifi, h2, hpack ([9977a7c](https://github.com/MysticRyuujin/mirror-bench/commit/9977a7c439590741123af2dec31548917d265186))
+* bump idna to 3.18 (fixes PYSEC-2026-215) ([#10](https://github.com/MysticRyuujin/mirror-bench/issues/10)) ([690565c](https://github.com/MysticRyuujin/mirror-bench/commit/690565cc1669320eded4faaa175eb8ae85d739e4))
+
 ## [0.1.2](https://github.com/MysticRyuujin/mirror-bench/compare/v0.1.1...v0.1.2) (2026-04-23)
 
 

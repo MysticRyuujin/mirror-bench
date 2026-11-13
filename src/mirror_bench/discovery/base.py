@@ -1,8 +1,11 @@
 """Base interface for per-distro mirror discoverers."""
 
 import asyncio
+import re
 from abc import ABC, abstractmethod
 from dataclasses import replace
+from datetime import UTC
+from email.utils import parsedate_to_datetime
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -48,6 +51,20 @@ class MirrorDiscoverer(ABC):
     @abstractmethod
     def throughput_path(self, host: HostInfo) -> str:
         """Relative path on each mirror used for the phase-2 throughput test."""
+
+    def probe_url(self, mirror: Mirror, host: HostInfo) -> str:
+        """Full phase-1 URL for one mirror. Override when it depends on the
+        mirror's own layout and not only on the host."""
+        return mirror.url + self.probe_path(host)
+
+    def sync_time(self, mirror: Mirror, body: bytes) -> float | None:
+        """Unix time the mirror's content was generated, read from the first
+        1 KiB of the phase-1 file. None when the file does not say.
+
+        This only means something when the phase-1 file is one that the
+        distribution rewrites as packages change.
+        """
+        return None
 
 
 async def fetch(
@@ -112,6 +129,44 @@ def with_https_candidates(mirrors: list[Mirror]) -> list[Mirror]:
                 out.append(replace(m, url=twin, protocols=("https",)))
         out.append(m)
     return out
+
+
+_NO_UPDATES_SUITE = frozenset({"sid", "unstable", "experimental"})
+
+
+def moving_suite(codename: str) -> str:
+    """The apt suite whose InRelease is rewritten as updates are published.
+
+    A stable release's own suite is static between point releases, so its
+    date cannot show that a mirror stopped syncing. A name that already has a
+    pocket (`noble-security`, `trixie-backports`) is used as given.
+    """
+    if "-" in codename or codename in _NO_UPDATES_SUITE:
+        return codename
+    return f"{codename}-updates"
+
+
+def release_date(body: bytes) -> float | None:
+    """The `Date:` field of an apt Release or InRelease file."""
+    for line in body.decode("ascii", "replace").splitlines():
+        if line.startswith("Date:"):
+            try:
+                parsed = parsedate_to_datetime(line.removeprefix("Date:").strip())
+            except TypeError, ValueError:
+                return None
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=UTC)
+            return parsed.timestamp()
+    return None
+
+
+def first_int(body: bytes, pattern: re.Pattern[bytes]) -> float | None:
+    """The Unix time captured by group 1 of `pattern`."""
+    match = pattern.search(body)
+    # A Unix time has 10 digits until the year 2286.
+    if match is None or len(match.group(1)) > 11:
+        return None
+    return float(match.group(1))
 
 
 def host_of(url: str) -> str:

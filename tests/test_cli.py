@@ -45,7 +45,7 @@ def test_list_json_output_valid() -> None:
 @respx.mock
 def test_bench_no_throughput_renders_table() -> None:
     _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
-    respx.get("https://mir-a.org/ubuntu/dists/noble/InRelease").respond(
+    respx.get("https://mir-a.org/ubuntu/dists/noble-updates/InRelease").respond(
         206, content=b"x" * 1024
     )
     result = runner.invoke(
@@ -73,7 +73,7 @@ def test_bench_unknown_distro_errors() -> None:
 @respx.mock
 def test_bench_json_output() -> None:
     _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
-    respx.get("https://mir-a.org/ubuntu/dists/noble/InRelease").respond(
+    respx.get("https://mir-a.org/ubuntu/dists/noble-updates/InRelease").respond(
         206, content=b"x" * 1024
     )
     result = runner.invoke(
@@ -99,7 +99,7 @@ def test_bench_json_output() -> None:
 @respx.mock
 def test_weights_parse() -> None:
     _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
-    respx.get("https://mir-a.org/ubuntu/dists/noble/InRelease").respond(
+    respx.get("https://mir-a.org/ubuntu/dists/noble-updates/InRelease").respond(
         206, content=b"x" * 1024
     )
     result = runner.invoke(
@@ -162,7 +162,7 @@ def test_completion_rejects_unknown_shell() -> None:
 def test_release_flag_targets_codename_for_apt() -> None:
     _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
     # Probe should hit jammy (overridden), NOT the default noble.
-    route = respx.get("https://mir-a.org/ubuntu/dists/jammy/InRelease").respond(
+    route = respx.get("https://mir-a.org/ubuntu/dists/jammy-updates/InRelease").respond(
         206, content=b"x" * 1024
     )
     result = runner.invoke(
@@ -182,7 +182,7 @@ def test_release_flag_targets_codename_for_apt() -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    assert route.called, "expected probe against dists/jammy/InRelease"
+    assert route.called, "expected probe against dists/jammy-updates/InRelease"
 
 
 def test_release_flag_short_form_accepted() -> None:
@@ -196,7 +196,7 @@ def test_release_flag_short_form_accepted() -> None:
 def test_no_subcommand_runs_bench_with_option_defaults() -> None:
     fake = {"ID": "ubuntu", "VERSION_CODENAME": "noble", "VERSION_ID": "24.04"}
     _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
-    respx.get("https://mir-a.org/ubuntu/dists/noble/InRelease").respond(
+    respx.get("https://mir-a.org/ubuntu/dists/noble-updates/InRelease").respond(
         206, content=b"x" * 1024
     )
     respx.get("https://mir-a.org/ubuntu/dists/noble/Contents-amd64.gz").respond(
@@ -216,6 +216,9 @@ def test_no_subcommand_runs_bench_with_option_defaults() -> None:
         ["bench", "--distro", "ubuntu", "--top", "-3"],
         ["bench", "--distro", "ubuntu", "--json", "--csv"],
         ["list", "--distro", "ubuntu", "--json", "--csv"],
+        ["bench", "--distro", "ubuntu", "--max-age", "-1"],
+        ["bench", "--distro", "ubuntu", "--max-age", "nan"],
+        ["bench", "--distro", "ubuntu", "--max-age", "inf"],
         ["bench", "--distro", "ubuntu", "--weights", "lat=-1"],
         ["bench", "--distro", "ubuntu", "--weights", "lat=nan"],
         ["bench", "--distro", "ubuntu", "--weights", "lat=inf"],
@@ -254,9 +257,9 @@ def test_bench_keeps_one_row_when_https_and_http_both_work() -> None:
         200, text="Site: mir-a.org\nCountry: US United States\nArchive-http: /debian/\n"
     )
     for scheme in ("https", "http"):
-        respx.get(f"{scheme}://mir-a.org/debian/dists/trixie/InRelease").respond(
-            206, content=b"x" * 1024
-        )
+        respx.get(
+            f"{scheme}://mir-a.org/debian/dists/trixie-updates/InRelease"
+        ).respond(206, content=b"x" * 1024)
     result = runner.invoke(
         app, ["bench", "--distro", "debian", "--no-throughput", "--json"]
     )
@@ -267,34 +270,116 @@ def test_bench_keeps_one_row_when_https_and_http_both_work() -> None:
     assert results[0]["throughput_error"] is None
 
 
-@respx.mock
-def test_bench_prefers_https_for_a_mirror_listed_as_http() -> None:
+_FEDORA_OS = "fedora/linux/releases/45/Everything/x86_64/os/"
+
+
+def _fedora_probe(scheme: str, host: str) -> respx.Route:
+    """Route for the latency probe: the updates tree beside releases/."""
+    return respx.get(
+        url__regex=(
+            rf"{scheme}://{host}\.example\.org/fedora/linux/updates/45/"
+            r"Everything/[^/]+/repodata/repomd\.xml"
+        )
+    )
+
+
+def _mock_fedora_us_list(*hosts: str) -> None:
     respx.get(
         url__regex=r"https://mirrors\.fedoraproject\.org/mirrorlist\?.*country=us"
     ).respond(
         200,
-        text=(
-            "# repo = fedora-45 arch = x86_64 country = us\n"
-            "http://both.example.org/f/os/\n"
-            "http://plain.example.org/f/os/\n"
-        ),
+        text="# repo = fedora-45 arch = x86_64 country = us\n"
+        + "".join(f"http://{h}.example.org/{_FEDORA_OS}\n" for h in hosts),
     )
-    for url in (
-        "https://both.example.org/f/os/repodata/repomd.xml",
-        "http://both.example.org/f/os/repodata/repomd.xml",
-        "http://plain.example.org/f/os/repodata/repomd.xml",
-    ):
-        respx.get(url).respond(206, content=b"x" * 1024)
-    respx.get("https://plain.example.org/f/os/repodata/repomd.xml").mock(
-        side_effect=httpx.ConnectError("no 443")
-    )
-    result = runner.invoke(
-        app,
-        ["bench", "--distro", "fedora", "--country", "US", "--no-throughput", "--json"],
-    )
+
+
+def _repomd(revision: int) -> bytes:
+    return f"<repomd><revision>{revision}</revision></repomd>".encode()
+
+
+_FEDORA_BENCH = ["bench", "--distro", "fedora", "--country", "US", "--no-throughput"]
+
+
+@respx.mock
+def test_bench_prefers_https_for_a_mirror_listed_as_http() -> None:
+    _mock_fedora_us_list("both", "plain")
+    _fedora_probe("https", "both").respond(206, content=_repomd(1_794_000_000))
+    _fedora_probe("http", "both").respond(206, content=_repomd(1_794_000_000))
+    _fedora_probe("http", "plain").respond(206, content=_repomd(1_794_000_000))
+    _fedora_probe("https", "plain").mock(side_effect=httpx.ConnectError("no 443"))
+    result = runner.invoke(app, [*_FEDORA_BENCH, "--json"])
     assert result.exit_code == 0, result.output
-    urls = {r["mirror"]["url"] for r in json.loads(result.output)["results"]}
-    assert urls == {"https://both.example.org/f/os/", "http://plain.example.org/f/os/"}
+    urls = {r["mirror"]["url"] for r in json.loads(result.stdout)["results"]}
+    assert urls == {
+        f"https://both.example.org/{_FEDORA_OS}",
+        f"http://plain.example.org/{_FEDORA_OS}",
+    }
+
+
+def _mock_fresh_and_stale(stale_age_s: int) -> None:
+    newest = 1_794_000_000
+    _mock_fedora_us_list("fresh", "stale")
+    for scheme in ("https", "http"):
+        _fedora_probe(scheme, "fresh").respond(206, content=_repomd(newest))
+        _fedora_probe(scheme, "stale").respond(
+            206, content=_repomd(newest - stale_age_s)
+        )
+
+
+@respx.mock
+def test_bench_drops_stale_mirrors_by_default() -> None:
+    _mock_fresh_and_stale(12 * 86400)
+    result = runner.invoke(app, [*_FEDORA_BENCH, "--json"])
+    assert result.exit_code == 0, result.output
+    results = json.loads(result.stdout)["results"]
+    assert [r["mirror"]["host"] for r in results] == ["fresh.example.org"]
+    assert results[0]["sync_age_s"] == 0
+    assert "dropped 1 mirror more than 36 h behind the newest" in result.stderr
+
+
+@respx.mock
+def test_bench_keeps_a_mirror_one_day_behind() -> None:
+    _mock_fresh_and_stale(23 * 3600)
+    result = runner.invoke(app, [*_FEDORA_BENCH, "--json"])
+    assert result.exit_code == 0, result.output
+    ages = {
+        r["mirror"]["host"]: r["sync_age_s"]
+        for r in json.loads(result.stdout)["results"]
+    }
+    assert ages == {"fresh.example.org": 0, "stale.example.org": 23 * 3600}
+    assert "dropped" not in result.stderr
+
+
+@respx.mock
+def test_bench_max_age_zero_keeps_stale_mirrors() -> None:
+    _mock_fresh_and_stale(12 * 86400)
+    result = runner.invoke(app, [*_FEDORA_BENCH, "--max-age", "0", "--json"])
+    assert result.exit_code == 0, result.output
+    ages = {
+        r["mirror"]["host"]: r["sync_age_s"]
+        for r in json.loads(result.stdout)["results"]
+    }
+    assert ages == {"fresh.example.org": 0, "stale.example.org": 12 * 86400}
+    assert "dropped" not in result.stderr
+
+
+@respx.mock
+def test_bench_keeps_current_http_twin_of_a_stale_https_endpoint() -> None:
+    newest = 1_794_000_000
+    _mock_fedora_us_list("split", "other")
+    _fedora_probe("https", "split").respond(206, content=_repomd(newest - 5 * 86400))
+    _fedora_probe("http", "split").respond(206, content=_repomd(newest))
+    _fedora_probe("https", "other").respond(206, content=_repomd(newest))
+    _fedora_probe("http", "other").respond(206, content=_repomd(newest))
+    result = runner.invoke(app, [*_FEDORA_BENCH, "--json"])
+    assert result.exit_code == 0, result.output
+    urls = {r["mirror"]["url"] for r in json.loads(result.stdout)["results"]}
+    assert urls == {
+        f"http://split.example.org/{_FEDORA_OS}",
+        f"https://other.example.org/{_FEDORA_OS}",
+    }
+    # The site still has a current endpoint, so it is not counted as dropped.
+    assert "dropped" not in result.stderr
 
 
 @respx.mock
@@ -303,7 +388,7 @@ def test_bench_without_a_tty_writes_no_control_codes(
 ) -> None:
     monkeypatch.setenv("NO_COLOR", "1")
     _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
-    respx.get("https://mir-a.org/ubuntu/dists/noble/InRelease").respond(
+    respx.get("https://mir-a.org/ubuntu/dists/noble-updates/InRelease").respond(
         206, content=b"x" * 1024
     )
     result = runner.invoke(app, ["bench", "--distro", "ubuntu", "--no-throughput"])
@@ -320,7 +405,7 @@ def test_bench_table_keeps_color_through_a_pipe_by_default(
 ) -> None:
     monkeypatch.delenv("NO_COLOR", raising=False)
     _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
-    respx.get("https://mir-a.org/ubuntu/dists/noble/InRelease").respond(
+    respx.get("https://mir-a.org/ubuntu/dists/noble-updates/InRelease").respond(
         206, content=b"x" * 1024
     )
     result = runner.invoke(app, ["bench", "--distro", "ubuntu", "--no-throughput"])

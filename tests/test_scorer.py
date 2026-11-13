@@ -1,9 +1,13 @@
 """Scorer pure-function tests."""
 
+from dataclasses import replace
+
 from mirror_bench.benchmark.scorer import (
+    drop_stale,
     filter_for_policy,
     prefer_https,
     score_results,
+    sync_ages,
 )
 from mirror_bench.models import Mirror, ProbeResult, Weights
 
@@ -207,3 +211,68 @@ def test_prefer_https_drops_http_twin_of_a_working_https_mirror() -> None:
         "http://b.example.org/debian/",
         "http://a.example.org/other/",
     ]
+
+
+_NOW = 1_794_600_000.0
+
+
+def _synced(
+    host: str, sync_time: float | None, *, error: str | None = None
+) -> ProbeResult:
+    return replace(
+        make_probe(url=f"https://{host}.example.org/u/", error=error),
+        sync_time=sync_time,
+    )
+
+
+def test_sync_ages_are_relative_to_the_newest_mirror() -> None:
+    newest = _NOW - 5 * 86400  # nothing published for five days
+    results = [
+        _synced("a", newest),
+        _synced("b", newest - 3600),
+        _synced("unknown", None),
+        _synced("failed", newest - 9 * 86400, error="ConnectError"),
+    ]
+    ages = sync_ages(results, now=_NOW)
+    assert ages == {
+        "https://a.example.org/u/": 0.0,
+        "https://b.example.org/u/": 3600.0,
+    }
+
+
+def test_sync_ages_ignore_a_mirror_dated_in_the_future() -> None:
+    results = [
+        _synced("a", _NOW - 3600),
+        _synced("b", _NOW - 7200),
+        _synced("broken", _NOW + 30 * 86400),
+    ]
+    ages = sync_ages(results, now=_NOW)
+    assert ages["https://a.example.org/u/"] == 0.0
+    assert ages["https://b.example.org/u/"] == 3600.0
+    assert ages["https://broken.example.org/u/"] == 0.0
+
+
+def test_sync_ages_empty_when_no_mirror_reports_a_time() -> None:
+    assert sync_ages([_synced("a", None)], now=_NOW) == {}
+
+
+def test_drop_stale() -> None:
+    results = [_synced("fresh", _NOW), _synced("old", _NOW - 86400 * 3)]
+    unknown = _synced("unknown", None)
+    ages = sync_ages([*results, unknown], now=_NOW)
+
+    kept = drop_stale([*results, unknown], ages, 36 * 3600)
+    assert [r.mirror.host for r in kept] == ["fresh.example.org", "unknown.example.org"]
+    # 0 turns the filter off.
+    assert len(drop_stale([*results, unknown], ages, 0)) == 3
+
+
+def test_score_carries_sync_age() -> None:
+    a = _synced("a", _NOW)
+    b = _synced("b", _NOW - 7200)
+    scores = score_results([a, b], None, Weights(), sync_ages([a, b], now=_NOW))
+    assert {s.mirror.host: s.sync_age_s for s in scores} == {
+        "a.example.org": 0.0,
+        "b.example.org": 7200.0,
+    }
+    assert score_results([a], None, Weights())[0].sync_age_s is None

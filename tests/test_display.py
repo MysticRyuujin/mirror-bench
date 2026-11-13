@@ -120,3 +120,42 @@ def test_http3_probe_result_is_reported() -> None:
     silent_row = next(ln for ln in table.splitlines() if "silent.example" in ln)
     assert "adv" not in ok_row
     assert "adv" in silent_row
+
+
+def test_age_column_and_fields() -> None:
+    ages = {"now": 0.0, "day": 23 * 3600.0, "old": 12 * 86400.0}
+    probes = [make_probe(url=f"https://{h}.example.org/u/") for h in (*ages, "unknown")]
+    scores = score_results(
+        probes,
+        None,
+        Weights(),
+        {f"https://{h}.example.org/u/": a for h, a in ages.items()},
+    )
+
+    table = display.table_to_string(scores, make_host())
+    assert "Age" in table
+    cells = {
+        host: next(ln for ln in table.splitlines() if f"{host}.example" in ln).split(
+            "│"
+        )
+        for host in (*ages, "unknown")
+    }
+    age_at = table.splitlines()[2].split("┃").index(" Age ")
+    assert {h: c[age_at].strip() for h, c in cells.items()} == {
+        "now": "0",
+        "day": "23h",
+        "old": "12d",
+        "unknown": "-",
+    }
+
+    buf = io.StringIO()
+    display.render_json(scores=scores, mirrors=None, host=make_host(), stream=buf)
+    by_host = {r["mirror"]["host"]: r for r in json.loads(buf.getvalue())["results"]}
+    assert by_host["day.example.org"]["sync_age_s"] == 23 * 3600.0
+    assert by_host["unknown.example.org"]["sync_age_s"] is None
+
+    buf = io.StringIO()
+    display.render_csv(scores=scores, mirrors=None, stream=buf)
+    rows = {r["host"]: r for r in csv.DictReader(io.StringIO(buf.getvalue()))}
+    assert rows["day.example.org"]["sync_age_s"] == "82800"
+    assert rows["unknown.example.org"]["sync_age_s"] == ""

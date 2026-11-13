@@ -1,5 +1,6 @@
 """Weighted composite mirror ranking."""
 
+import time
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -11,11 +12,16 @@ if TYPE_CHECKING:
 # Maximum security points we can award. See _security_score for the breakdown.
 _MAX_SECURITY = 2.5
 
+# A sync time this far past the local clock is a broken mirror, not the
+# newest one.
+_FUTURE_SLACK_S = 24 * 3600.0
+
 
 def score_results(
     latency_results: Iterable[ProbeResult],
     throughput_results: dict[str, ProbeResult] | None,
     weights: Weights,
+    ages: dict[str, float] | None = None,
 ) -> list[Score]:
     """Rank mirrors. `throughput_results=None` means phase 2 did not run."""
     throughput_map = throughput_results or {}
@@ -73,6 +79,7 @@ def score_results(
                 composite=composite,
                 probe=r,
                 throughput_probe=tput_probe,
+                sync_age_s=(ages or {}).get(r.mirror.url),
             )
         )
 
@@ -121,6 +128,38 @@ def _security_score(probe: ProbeResult, tput_probe: ProbeResult | None) -> float
     if http_version in {"HTTP/2", "HTTP/2.0"}:
         score += 0.5
     return score
+
+
+def sync_ages(
+    results: Iterable[ProbeResult], *, now: float | None = None
+) -> dict[str, float]:
+    """Seconds each mirror is behind the newest one, keyed by mirror URL.
+
+    Mirrors are compared with each other, not with the local clock: the
+    distribution may not have published anything for days, and that is not
+    the mirrors' fault. Mirrors with no known sync time are left out.
+    """
+    limit = (time.time() if now is None else now) + _FUTURE_SLACK_S
+    times = {
+        r.mirror.url: r.sync_time for r in results if r.ok and r.sync_time is not None
+    }
+    plausible = [t for t in times.values() if t <= limit]
+    if not plausible:
+        return {}
+    newest = max(plausible)
+    return {url: max(0.0, newest - t) for url, t in times.items()}
+
+
+def drop_stale(
+    results: Iterable[ProbeResult], ages: dict[str, float], max_age_s: float
+) -> list[ProbeResult]:
+    """Drop mirrors more than `max_age_s` behind; 0 keeps all.
+
+    A mirror with no known age is kept: nothing shows it is stale.
+    """
+    if max_age_s <= 0:
+        return list(results)
+    return [r for r in results if ages.get(r.mirror.url, 0.0) <= max_age_s]
 
 
 def prefer_https(results: Iterable[ProbeResult]) -> list[ProbeResult]:

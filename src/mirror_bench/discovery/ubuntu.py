@@ -13,6 +13,8 @@ from mirror_bench.discovery.base import (
     fetch,
     fetch_all,
     host_of,
+    moving_suite,
+    release_date,
     with_https_candidates,
 )
 from mirror_bench.distro import DEFAULT_CODENAMES
@@ -91,7 +93,10 @@ class UbuntuDiscoverer(MirrorDiscoverer):
 
     def probe_path(self, host: HostInfo) -> str:
         codename = host.codename or DEFAULT_CODENAMES[self.distro]
-        return f"dists/{codename}/InRelease"
+        return f"dists/{moving_suite(codename)}/InRelease"
+
+    def sync_time(self, mirror: Mirror, body: bytes) -> float | None:
+        return release_date(body)
 
     def throughput_path(self, host: HostInfo) -> str:
         # These lists cover archive mirrors, which carry amd64 and i386 only;

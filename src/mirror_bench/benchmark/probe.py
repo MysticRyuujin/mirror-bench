@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 # Phase 1 samples a small ranged window (1 KiB) to keep the latency probe cheap.
 _LATENCY_RANGE = "bytes=0-1023"
 _LATENCY_MAX_BYTES = 1024
+# identity: the body is read raw and parsed for the mirror's sync time.
+_LATENCY_HEADERS = {"Range": _LATENCY_RANGE, "Accept-Encoding": "identity"}
 _LATENCY_DEADLINE_S = 10.0
 
 # Phase 2 downloads this many bytes max — caps the cost for slow/misbehaving mirrors.
@@ -152,26 +154,29 @@ async def _latency_probe(
     host: HostInfo,
     samples: int,
 ) -> ProbeResult:
-    url = mirror.url + discoverer.probe_path(host)
+    url = discoverer.probe_url(mirror, host)
     ttfbs: list[float] = []
     totals: list[float] = []
     last_resp: httpx.Response | None = None
     last_bytes = 0
+    last_body = b""
     last_error = "no_samples"
 
     for _ in range(samples):
         started = time.perf_counter()
         nbytes = 0
+        body = bytearray()
         try:
             async with (
                 asyncio.timeout(_LATENCY_DEADLINE_S),
-                client.stream("GET", url, headers={"Range": _LATENCY_RANGE}) as resp,
+                client.stream("GET", url, headers=_LATENCY_HEADERS) as resp,
             ):
                 ttfb_s = time.perf_counter() - started
                 if _downgraded(mirror, resp):
                     return _failed(mirror, "https_downgrade", resp)
                 async for chunk in resp.aiter_raw():
                     nbytes += len(chunk)
+                    body += chunk
                     # Only a server that ignored Range sends more than the
                     # window. A ranged reply is read to its end, which keeps
                     # the connection reusable for the next sample.
@@ -186,6 +191,7 @@ async def _latency_probe(
             totals.append((time.perf_counter() - started) * 1000.0)
             last_resp = resp
             last_bytes = nbytes
+            last_body = bytes(body[:_LATENCY_MAX_BYTES])
             continue
         # A mirror that fails before any sample succeeds is not worth the
         # remaining connect timeouts.
@@ -212,6 +218,7 @@ async def _latency_probe(
         error=None,
         final_url=str(last_resp.url),
         h3_port=_h3_port(last_resp),
+        sync_time=discoverer.sync_time(mirror, last_body),
     )
 
 

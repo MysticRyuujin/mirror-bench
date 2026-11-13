@@ -16,7 +16,7 @@ from tests.conftest import make_host
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-_LATENCY_URL = "https://mirror.example.org/ubuntu/dists/noble/InRelease"
+_LATENCY_URL = "https://mirror.example.org/ubuntu/dists/noble-updates/InRelease"
 _THROUGHPUT_URL = "https://mirror.example.org/ubuntu/dists/noble/Contents-amd64.gz"
 _KIB = 1024
 
@@ -55,7 +55,7 @@ def _mirror(url: str = "https://mirror.example.org/ubuntu/") -> Mirror:
 @pytest.mark.asyncio
 @respx.mock
 async def test_latency_probe_success(client: httpx.AsyncClient) -> None:
-    url = "https://mirror.example.org/ubuntu/dists/noble/InRelease"
+    url = "https://mirror.example.org/ubuntu/dists/noble-updates/InRelease"
     respx.get(url).respond(206, content=b"x" * 1024)
     discoverer = get_discoverer("ubuntu")
     host = make_host("ubuntu", codename="noble")
@@ -72,7 +72,7 @@ async def test_latency_probe_success(client: httpx.AsyncClient) -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_latency_probe_failure_captured(client: httpx.AsyncClient) -> None:
-    respx.get("https://fail.example.org/ubuntu/dists/noble/InRelease").mock(
+    respx.get("https://fail.example.org/ubuntu/dists/noble-updates/InRelease").mock(
         side_effect=httpx.ConnectError("boom")
     )
     discoverer = get_discoverer("ubuntu")
@@ -139,7 +139,7 @@ async def test_latency_probe_multiple_mirrors_concurrent(
     client: httpx.AsyncClient,
 ) -> None:
     for i in range(5):
-        url = f"https://m{i}.example.org/ubuntu/dists/noble/InRelease"
+        url = f"https://m{i}.example.org/ubuntu/dists/noble-updates/InRelease"
         respx.get(url).respond(206, content=b"x" * 1024)
     discoverer = get_discoverer("ubuntu")
     host = make_host("ubuntu", codename="noble")
@@ -187,7 +187,7 @@ async def _throughput(client: httpx.AsyncClient, mirror: Mirror) -> ProbeResult:
 @pytest.mark.asyncio
 @respx.mock
 async def test_latency_probe_follows_redirect(client: httpx.AsyncClient) -> None:
-    target = "https://edge.example.org/ubuntu/dists/noble/InRelease"
+    target = "https://edge.example.org/ubuntu/dists/noble-updates/InRelease"
     respx.get(_LATENCY_URL).respond(302, headers={"Location": target})
     respx.get(target).respond(206, content=b"x" * _KIB)
     r = await _latency(client, _mirror())
@@ -211,7 +211,7 @@ async def test_latency_probe_redirect_without_target_is_not_ok() -> None:
 async def test_https_mirror_redirecting_to_http_is_a_downgrade(
     client: httpx.AsyncClient,
 ) -> None:
-    plain = "http://mirror.example.org/ubuntu/dists/noble/InRelease"
+    plain = "http://mirror.example.org/ubuntu/dists/noble-updates/InRelease"
     respx.get(_LATENCY_URL).respond(302, headers={"Location": plain})
     respx.get(plain).respond(206, content=b"x" * _KIB)
     r = await _latency(client, _mirror())
@@ -235,7 +235,7 @@ async def test_http_mirror_gets_no_tls_credit_from_a_redirect(
         return ("TLSv1.3", True)
 
     monkeypatch.setattr(tls, "inspect", fake_inspect)
-    plain = "http://mirror.example.org/ubuntu/dists/noble/InRelease"
+    plain = "http://mirror.example.org/ubuntu/dists/noble-updates/InRelease"
     respx.get(plain).respond(301, headers={"Location": _LATENCY_URL})
     respx.get(_LATENCY_URL).respond(206, content=b"x" * _KIB)
 
@@ -375,7 +375,7 @@ async def test_latency_probe_records_advertised_http3(
 async def test_http3_advertisement_over_plain_http_is_ignored(
     client: httpx.AsyncClient,
 ) -> None:
-    plain = "http://mirror.example.org/ubuntu/dists/noble/InRelease"
+    plain = "http://mirror.example.org/ubuntu/dists/noble-updates/InRelease"
     respx.get(plain).respond(
         206, content=b"x" * _KIB, headers={"Alt-Svc": 'h3=":443"; ma=3600'}
     )
@@ -389,7 +389,7 @@ async def test_http3_advertisement_over_plain_http_is_ignored(
 async def test_http3_port_comes_from_the_origin_that_answered(
     client: httpx.AsyncClient,
 ) -> None:
-    target = "https://edge.example.org/ubuntu/dists/noble/InRelease"
+    target = "https://edge.example.org/ubuntu/dists/noble-updates/InRelease"
     respx.get(_LATENCY_URL).respond(
         302, headers={"Location": target, "Alt-Svc": 'h3=":443"'}
     )
@@ -399,3 +399,26 @@ async def test_http3_port_comes_from_the_origin_that_answered(
     r = await _latency(client, _mirror())
     assert r.final_url == target
     assert r.h3_port == 8443
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_latency_probe_reads_the_sync_time(client: httpx.AsyncClient) -> None:
+    route = respx.get(_LATENCY_URL).respond(
+        206, content=b"Origin: Ubuntu\nDate: Fri, 13 Nov 2026  3:21:26 UTC\n"
+    )
+    r = await _latency(client, _mirror())
+    assert r.sync_time == 1794540086.0
+    # A compressed body could not be parsed for the date.
+    assert route.calls.last.request.headers["accept-encoding"] == "identity"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_latency_probe_without_a_sync_time_is_still_ok(
+    client: httpx.AsyncClient,
+) -> None:
+    respx.get(_LATENCY_URL).respond(206, content=b"x" * _KIB)
+    r = await _latency(client, _mirror())
+    assert r.ok
+    assert r.sync_time is None

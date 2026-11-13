@@ -86,10 +86,10 @@ def _mock_two_arch_mirrors() -> None:
             ]
         },
     )
-    respx.get("https://h3.example.org/arch/lastsync").respond(
+    respx.get("https://h3.example.org/arch/lastupdate").respond(
         206, content=b"1", headers={"Alt-Svc": 'h3=":8443"'}
     )
-    respx.get("https://plain.example.org/arch/lastsync").respond(206, content=b"1")
+    respx.get("https://plain.example.org/arch/lastupdate").respond(206, content=b"1")
 
 
 def _run_http3_bench(
@@ -117,7 +117,7 @@ def test_http3_flag_probes_only_mirrors_that_advertise(
         monkeypatch, make_probe(ttfb_ms=9.0, http="HTTP/3")
     )
     assert result.exit_code == 0, result.output
-    assert probed == [("https://h3.example.org/arch/lastsync", 8443)]
+    assert probed == [("https://h3.example.org/arch/lastupdate", 8443)]
     by_host = {r["mirror"]["host"]: r for r in json.loads(result.stdout)["results"]}
     assert by_host["h3.example.org"]["h3_latency_ms"] == 9.0
     assert by_host["plain.example.org"]["h3_latency_ms"] is None

@@ -461,13 +461,21 @@ def test_probe_paths_match_distro() -> None:
     arm = "aarch64"
     ubuntu = get_discoverer("ubuntu")
     ubuntu_host = make_host("ubuntu", codename="noble", arch=arm)
-    assert ubuntu.probe_path(ubuntu_host) == "dists/noble/InRelease"
+    # The -updates suite is the one that is rewritten as packages change.
+    assert ubuntu.probe_path(ubuntu_host) == "dists/noble-updates/InRelease"
+    assert ubuntu.probe_path(make_host("ubuntu", codename="noble-security")) == (
+        "dists/noble-security/InRelease"
+    )
     # Archive mirrors carry no ports architectures, whatever the host is.
     assert ubuntu.throughput_path(ubuntu_host) == "dists/noble/Contents-amd64.gz"
 
     debian = get_discoverer("debian")
     debian_host = make_host("debian", codename="trixie", arch=arm)
-    assert debian.probe_path(debian_host) == "dists/trixie/InRelease"
+    assert debian.probe_path(debian_host) == "dists/trixie-updates/InRelease"
+    for suite in ("sid", "unstable", "experimental", "trixie-backports"):
+        assert debian.probe_path(make_host("debian", codename=suite)) == (
+            f"dists/{suite}/InRelease"
+        )
     assert debian.throughput_path(debian_host) == (
         "dists/trixie/main/Contents-arm64.gz"
     )
@@ -480,12 +488,19 @@ def test_probe_paths_match_distro() -> None:
 
     fedora = get_discoverer("fedora")
     fedora_host = make_host("fedora", codename=None, release_version="45")
-    assert fedora.probe_path(fedora_host) == "repodata/repomd.xml"
+    assert fedora.probe_path(fedora_host) == (
+        "../../../../../updates/45/Everything/x86_64/repodata/repomd.xml"
+    )
+    listed = "https://m.example.org/pub/fedora/linux/releases/45/Everything/x86_64/os/"
+    assert str(httpx.URL(listed + fedora.probe_path(fedora_host))) == (
+        "https://m.example.org/pub/fedora/linux/updates/45/Everything/x86_64"
+        "/repodata/repomd.xml"
+    )
     assert fedora.throughput_path(fedora_host) == "images/install.img"
 
     arch = get_discoverer("arch")
     arch_host = make_host("arch", codename=None, arch=arm)
-    assert arch.probe_path(arch_host) == "lastsync"
+    assert arch.probe_path(arch_host) == "lastupdate"
     assert arch.throughput_path(arch_host) == "extra/os/x86_64/extra.db"
 
 
@@ -494,7 +509,7 @@ def test_codename_defaults_when_host_has_none() -> None:
         "dists/zena/Release"
     )
     assert get_discoverer("debian").probe_path(make_host("debian", codename=None)) == (
-        "dists/trixie/InRelease"
+        "dists/trixie-updates/InRelease"
     )
 
 
@@ -547,3 +562,93 @@ async def test_fedora_http_listing_gains_https_candidate(
         ("https://plain.example.org/fedora/45/os/", "US"),
         ("http://plain.example.org/fedora/45/os/", "US"),
     ]
+
+
+_STANDARD_MIRROR = Mirror(
+    url="https://m.example.org/fedora/linux/releases/45/Everything/x86_64/os/",
+    host="m.example.org",
+    country=None,
+)
+
+# First bytes of the live files, captured 2026-11-13.
+_UBUNTU_INRELEASE = b"""-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: Ubuntu
+Label: Ubuntu
+Suite: noble-updates
+Version: 24.04
+Codename: noble
+Date: Fri, 13 Nov 2026  3:21:26 UTC
+Architectures: amd64 arm64 armhf i386 ppc64el riscv64 s390x
+"""
+_DEBIAN_INRELEASE = b"""-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA256
+
+Origin: Debian
+Label: Debian
+Suite: stable-updates
+Codename: trixie-updates
+Date: Fri, 13 Nov 2026 02:08:11 UTC
+Valid-Until: Fri, 20 Nov 2026 02:08:11 UTC
+"""
+_MINT_RELEASE = b"""Origin: linuxmint
+Label: linuxmint
+Codename: zena
+Date: Tue, 10 Nov 2026 17:07:35 UTC
+Architectures: i386 amd64
+"""
+_FEDORA_REPOMD = b"""<?xml version="1.0" encoding="UTF-8"?>
+<repomd xmlns="http://linux.duke.edu/metadata/repo">
+  <revision>1794529214</revision>
+  <data type="primary">
+    <timestamp>1794529190</timestamp>
+"""
+
+
+@pytest.mark.parametrize(
+    ("distro_id", "body", "expected"),
+    [
+        ("ubuntu", _UBUNTU_INRELEASE, 1794540086.0),
+        ("debian", _DEBIAN_INRELEASE, 1794535691.0),
+        ("mint", _MINT_RELEASE, 1794330455.0),
+        ("arch", b"1794545747\n", 1794545747.0),
+        ("fedora", _FEDORA_REPOMD, 1794529214.0),
+    ],
+)
+def test_sync_time_from_probe_file(
+    distro_id: str, body: bytes, expected: float
+) -> None:
+    assert get_discoverer(distro_id).sync_time(_STANDARD_MIRROR, body) == expected
+
+
+@pytest.mark.parametrize("distro_id", ["ubuntu", "debian", "mint", "arch", "fedora"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"",
+        b"<html><body>404 Not Found</body></html>",
+        b"\x1f\x8b\x08\x00\xff\xfe binary",
+        b"Date: not a date\n",
+        b"<revision>" + b"9" * 400 + b"</revision>",
+        b"9" * 400,
+    ],
+)
+def test_sync_time_is_none_for_unreadable_bodies(distro_id: str, body: bytes) -> None:
+    assert get_discoverer(distro_id).sync_time(_STANDARD_MIRROR, body) is None
+
+
+def test_fedora_mirror_with_an_unusual_layout_is_probed_where_listed() -> None:
+    fedora = get_discoverer("fedora")
+    host = make_host("fedora", codename=None, release_version="45")
+    odd = _listed("https://odd.example.org/fedora/45/os/")
+    assert fedora.probe_url(odd, host) == (
+        "https://odd.example.org/fedora/45/os/repodata/repomd.xml"
+    )
+    # That file is the static release tree: its revision says nothing.
+    assert fedora.sync_time(odd, _FEDORA_REPOMD) is None
+
+    assert str(httpx.URL(fedora.probe_url(_STANDARD_MIRROR, host))) == (
+        "https://m.example.org/fedora/linux/updates/45/Everything/x86_64"
+        "/repodata/repomd.xml"
+    )

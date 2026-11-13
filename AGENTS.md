@@ -92,6 +92,9 @@ Run a single test: `uv run pytest tests/test_scorer.py::test_weights_shift_ranki
 ## Adding a new discoverer
 
 1. `src/mirror_bench/discovery/<name>.py` implementing `MirrorDiscoverer`.
+   `probe_path` must name a small file that upstream rewrites as packages
+   change, and `sync_time` must read its generation time, or stale mirrors
+   cannot be detected.
 2. Register in `discovery/__init__.py::DISCOVERERS`.
 3. Add ID aliases in `distro.py::_ALIASES`.
 4. Respx-mocked test in `tests/test_discovery.py` + fixture file under

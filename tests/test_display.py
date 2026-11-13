@@ -72,9 +72,8 @@ def test_http3_advertisement_is_reported() -> None:
 
     buf = io.StringIO()
     display.render_csv(scores=scores, mirrors=None, stream=buf)
-    rows = list(csv.reader(io.StringIO(buf.getvalue())))
-    assert rows[0][-1] == "h3_advertised"
-    assert {row[1]: row[-1] for row in rows[1:]} == {
+    rows = list(csv.DictReader(io.StringIO(buf.getvalue())))
+    assert {row["host"]: row["h3_advertised"] for row in rows} == {
         "h3.example.org": "true",
         "plain.example.org": "false",
     }
@@ -85,3 +84,39 @@ def test_http3_advertisement_is_reported() -> None:
     plain_row = next(ln for ln in table.splitlines() if "plain.example" in ln)
     assert "adv" in h3_row
     assert "adv" not in plain_row
+
+
+def test_http3_probe_result_is_reported() -> None:
+    confirmed = replace(make_probe(url="https://ok.example.org/u/"), h3_port=443)
+    silent = replace(make_probe(url="https://silent.example.org/u/"), h3_port=443)
+    scores = [
+        replace(
+            s,
+            h3_probe=make_probe(url=s.mirror.url, ttfb_ms=12.5, http="HTTP/3")
+            if s.mirror.host == "ok.example.org"
+            else make_probe(
+                url=s.mirror.url, ttfb_ms=None, status=None, error="ConnectionError"
+            ),
+        )
+        for s in score_results([confirmed, silent], None, Weights())
+    ]
+
+    buf = io.StringIO()
+    display.render_json(scores=scores, mirrors=None, host=make_host(), stream=buf)
+    by_host = {r["mirror"]["host"]: r for r in json.loads(buf.getvalue())["results"]}
+    assert by_host["ok.example.org"]["h3_latency_ms"] == 12.5
+    assert by_host["ok.example.org"]["h3_error"] is None
+    assert by_host["silent.example.org"]["h3_latency_ms"] is None
+    assert by_host["silent.example.org"]["h3_error"] == "ConnectionError"
+
+    buf = io.StringIO()
+    display.render_csv(scores=scores, mirrors=None, stream=buf)
+    rows = {r["host"]: r for r in csv.DictReader(io.StringIO(buf.getvalue()))}
+    assert rows["ok.example.org"]["h3_latency_ms"] == "12.50"
+    assert rows["silent.example.org"]["h3_error"] == "ConnectionError"
+
+    table = display.table_to_string(scores, make_host())
+    ok_row = next(ln for ln in table.splitlines() if "ok.example" in ln)
+    silent_row = next(ln for ln in table.splitlines() if "silent.example" in ln)
+    assert "adv" not in ok_row
+    assert "adv" in silent_row

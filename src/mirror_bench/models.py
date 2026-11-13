@@ -76,6 +76,7 @@ class Score:
     composite: float
     probe: ProbeResult
     throughput_probe: ProbeResult | None = None
+    h3_probe: ProbeResult | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -111,3 +112,4 @@ class BenchConfig:
     weights: Weights = field(default_factory=Weights)
     samples: int = 3
     skip_throughput: bool = False
+    http3: bool = False

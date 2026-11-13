@@ -69,3 +69,20 @@ async def test_default_probe_paths_exist_on_real_mirrors(name: str) -> None:
     assert len(usable) >= 0.8 * len(reachable), {
         r.mirror.host: r.error or r.status for r in throughput.values()
     }
+
+
+@pytest.mark.asyncio
+async def test_quic_probe_against_a_mirror_that_advertises_http3() -> None:
+    from mirror_bench.benchmark import h3_quic
+    from mirror_bench.models import Mirror
+
+    url = "https://geo.mirror.pkgbuild.com/lastsync"
+    mirror = Mirror(url=url, host="geo.mirror.pkgbuild.com", country=None)
+    result = await h3_quic.probe(mirror, url, 443)
+    # No answer at all means UDP does not leave this network; that is not a
+    # defect in the probe. Any other failure is.
+    if result.error in {"ConnectionError", "timeout"}:
+        pytest.skip(f"QUIC unreachable from here: {result.error}")
+    assert result.ok, result.error or result.status
+    assert result.http_version == "HTTP/3"
+    assert result.ttfb_ms is not None

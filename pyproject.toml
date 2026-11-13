@@ -31,6 +31,11 @@ dependencies = [
     "rich>=13",
 ]
 
+[project.optional-dependencies]
+# Real QUIC probes for `bench --http3`. Optional, so the default install keeps
+# its three runtime dependencies.
+http3 = ["aioquic>=1.2"]
+
 [project.urls]
 Homepage = "https://github.com/MysticRyuujin/mirror-bench"
 Issues = "https://github.com/MysticRyuujin/mirror-bench/issues"

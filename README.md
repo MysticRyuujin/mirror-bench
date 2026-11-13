@@ -117,6 +117,7 @@ Running `mirror-bench` with no subcommand is equivalent to `mirror-bench bench`.
 | `--tls13-only`                | Hard-exclude mirrors that don't negotiate TLS 1.3.                                       |
 | `--weights lat=…,thr=…,sec=…` | Override scoring weights (auto-normalized).                                              |
 | `--no-throughput`             | Skip phase 2. Phase-1 latency screen only.                                               |
+| `--http3`                     | Probe over QUIC the mirrors that advertise HTTP/3. Needs the `http3` extra.              |
 | `--json`                      | Emit JSON to stdout. Suppresses the table + progress.                                    |
 | `--csv`                       | Emit CSV to stdout. Suppresses the table + progress.                                     |
 
@@ -414,6 +415,22 @@ Phase 1 reads the `Alt-Svc` response header. The `HTTP/3` column shows `adv`
 when a mirror advertises HTTP/3 (`h3`) for its own host; JSON and CSV carry
 the same fact as `h3_advertised`. This has no effect on the score: apt, dnf,
 and pacman do not use HTTP/3 today.
+
+To confirm the advertisement with a real QUIC request, install the optional
+extra and add `--http3`:
+
+```sh
+uv tool install "linux-mirror-bench[http3]"
+mirror-bench bench --distro arch --http3
+```
+
+- Each ranked mirror that advertises HTTP/3 gets one ranged GET over QUIC.
+- The `HTTP/3` column shows `yes` when that request succeeds. JSON and CSV
+  gain `h3_latency_ms` and `h3_error`.
+- If UDP is blocked on your network, the probes fail after about 8 seconds
+  and the column stays at `adv`.
+- Without the extra, `--http3` exits with code 2 and names the extra.
+- The container image does not include the extra.
 
 ## Development
 

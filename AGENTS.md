@@ -18,7 +18,10 @@ src/mirror_bench/
     transport.py      shared httpx.AsyncClient factory
     probe.py          two-phase async orchestration (TaskGroup + semaphore)
     tls.py            TLS version / cert inspection via response.extensions
-    h3.py             HTTP/3 discovery from the Alt-Svc header
+    h3.py             HTTP/3 discovery from the Alt-Svc header + optional
+                      QUIC probe orchestration (--http3)
+    h3_quic.py        aioquic client; imported only through h3.py (optional
+                      `http3` extra, not a runtime dependency)
     scorer.py         weighted composite ranking
   display.py          rich.Table + JSON/CSV emitters
 
@@ -102,7 +105,8 @@ Run a single test: `uv run pytest tests/test_scorer.py::test_weights_shift_ranki
 - Don't skip hooks (`--no-verify`), nor add `# type: ignore` / `# noqa` /
   `# nosec` without a one-line reason at the call site.
 - Don't introduce new runtime dependencies without a strong reason — three
-  (`httpx[http2]`, `typer`, `rich`) is the budget.
+  (`httpx[http2]`, `typer`, `rich`) is the budget. `aioquic` is an optional
+  extra (`http3`): import it only in `benchmark/h3_quic.py`.
 - Don't expand `[tool.ruff.lint] select` without a concrete bug class in mind.
 - Don't emit rich output to stdout when `--json` or `--csv` is set.
 - Don't rely on network access in unit tests. Network-touching tests must be

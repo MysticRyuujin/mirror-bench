@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+from dataclasses import replace
 
 import typer
 from rich.progress import (
@@ -16,7 +17,7 @@ from typer.core import TyperGroup
 
 from mirror_bench import display
 from mirror_bench import distro as distro_mod
-from mirror_bench.benchmark import probe, scorer, transport
+from mirror_bench.benchmark import h3, probe, scorer, transport
 from mirror_bench.discovery import DiscoveryError, get_discoverer
 from mirror_bench.models import (
     BenchConfig,
@@ -84,6 +85,14 @@ JsonOpt = typer.Option(
 )
 CsvOpt = typer.Option(
     False, "--csv", help="Emit CSV to stdout (suppresses table + progress)."
+)
+Http3Opt = typer.Option(
+    False,
+    "--http3",
+    help=(
+        "Probe over QUIC the mirrors that advertise HTTP/3. "
+        'Needs the optional extra: "linux-mirror-bench[http3]".'
+    ),
 )
 SkipThroughputOpt = typer.Option(
     False,
@@ -169,9 +178,18 @@ def bench_cmd(
     json_out: bool = JsonOpt,
     csv_out: bool = CsvOpt,
     no_throughput: bool = SkipThroughputOpt,
+    http3: bool = Http3Opt,
 ) -> None:
     """Discover mirrors, run a two-phase benchmark, print the ranked table."""
     _check_output_flags(json_out, csv_out)
+    if http3:
+        # Before discovery, so the flag fails the same way whether or not
+        # any mirror turns out to advertise HTTP/3.
+        try:
+            h3.ensure_available()
+        except h3.Http3UnavailableError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2) from exc
     try:
         host = distro_mod.resolve(distro, release)
     except distro_mod.DistroDetectionError as exc:
@@ -187,6 +205,7 @@ def bench_cmd(
         tls13_only=tls13_only,
         weights=_parse_weights(weights),
         skip_throughput=no_throughput,
+        http3=http3,
     )
     if no_throughput and cfg.weights.latency + cfg.weights.security <= 0:
         msg = "--no-throughput needs a latency or security weight above zero"
@@ -359,4 +378,19 @@ async def _run_bench(host: HostInfo, cfg: BenchConfig, *, quiet: bool) -> list[S
                     )
 
         scores = scorer.score_results(top_for_phase2, throughput_map, cfg.weights)
-        return scores[: cfg.top]
+        if cfg.http3:
+            scores = await _with_h3_probes(scores, min(8, cfg.concurrency))
+        return scores
+
+
+async def _with_h3_probes(scores: list[Score], concurrency: int) -> list[Score]:
+    h3_map = await h3.probe_advertised(
+        (s.probe for s in scores), concurrency=concurrency
+    )
+    if h3_map and not any(r.ok for r in h3_map.values()):
+        typer.secho(
+            "no HTTP/3 probe succeeded; UDP may be blocked on this network",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+    return [replace(s, h3_probe=h3_map.get(s.mirror.url)) for s in scores]

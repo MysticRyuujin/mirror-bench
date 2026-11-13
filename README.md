@@ -252,7 +252,7 @@ All arguments are optional; defaults match what CI ships.
 | ---------------- | -------- | ------------------------------------------------------------------- |
 | `PYTHON_VERSION` | `3.14`   | Base image tag (`python:<PYTHON_VERSION>-slim-bookworm`).           |
 | `UV_VERSION`     | `0.11.7` | uv release pulled from `ghcr.io/astral-sh/uv:<UV_VERSION>`.         |
-| `VERSION`        | `0.1.0`  | Value embedded in the `org.opencontainers.image.version` OCI label. |
+| `VERSION`        | `dev`    | Value embedded in the `org.opencontainers.image.version` OCI label. |
 
 Example:
 

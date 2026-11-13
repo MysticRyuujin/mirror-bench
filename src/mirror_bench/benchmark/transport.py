@@ -4,11 +4,15 @@ import ssl
 
 import httpx
 
+from mirror_bench import __version__
+
 _DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=5.0, write=3.0, pool=5.0)
 _MAX_REDIRECTS = 3
 _DEFAULT_LIMITS = httpx.Limits(max_connections=100, max_keepalive_connections=20)
 
-USER_AGENT = "mirror-bench/0.1.0 (+https://github.com/MysticRyuujin/mirror-bench)"
+USER_AGENT = (
+    f"mirror-bench/{__version__} (+https://github.com/MysticRyuujin/mirror-bench)"
+)
 
 
 def build_client(

@@ -44,7 +44,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv sync --frozen --all-extras || uv sync --all-extras
+      - run: uv sync --frozen --all-extras
       - name: Ruff check
         run: uv run ruff check --output-format=github .
       - name: Ruff format check
@@ -60,7 +60,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv sync --frozen --all-extras || uv sync --all-extras
+      - run: uv sync --frozen --all-extras
       - name: mypy
         run: uv run mypy src tests
 
@@ -81,7 +81,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv sync --frozen --all-extras || uv sync --all-extras
+      - run: uv sync --frozen --all-extras
       - name: pytest
         run: uv run pytest -v --tb=short
       - name: Smoke-test the built CLI
@@ -99,7 +99,7 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: pyproject.toml
-      - run: uv sync --frozen --all-extras || uv sync --all-extras
+      - run: uv sync --frozen --all-extras
       - name: Bandit
         run: uv run --with "bandit[toml]" bandit -c pyproject.toml -r src
       - name: pip-audit (runtime deps)

@@ -9,10 +9,11 @@ this repo. Humans should read `README.md` + `CONTRIBUTING.md` instead.
 src/mirror_bench/
   cli.py              typer app, subcommands `bench`, `list`, `completion`
   distro.py           /etc/os-release parsing + derivative alias table +
-                      structured exceptions (UnsupportedDistroError, etc.)
+                      default codenames + structured exceptions
+                      (UnsupportedDistroError, etc.)
   models.py           Mirror, ProbeResult, Score, Weights, BenchConfig, HostInfo
   discovery/          per-distro mirror fetchers (ABC + 5 impls +
-                      UnknownDiscovererError)
+                      DiscoveryError, UnknownDiscovererError)
   benchmark/
     transport.py      shared httpx.AsyncClient factory
     probe.py          two-phase async orchestration (TaskGroup + semaphore)
@@ -23,7 +24,7 @@ src/mirror_bench/
 tests/
   fixtures/           captured mirror-list bodies per distro
   test_*.py           respx-mocked units + @pytest.mark.integration opt-ins
-                      (45 tests, 2 integration-gated)
+                      (integration.yml runs the opt-ins each week)
 ```
 
 ## Commands (use these, not ad-hoc ones)
@@ -111,6 +112,9 @@ Run a single test: `uv run pytest tests/test_scorer.py::test_weights_shift_ranki
 - **Mypy error.** Fix the types. `# type: ignore` is not allowed in this
   codebase — if you think you need one, you're probably modelling something
   wrong.
+- **Scheduled integration run fails.** First check for upstream drift: a
+  moved file, a renamed list field, an end-of-life default release. Fix the
+  path or default and refresh the fixture to match the live format.
 - **Integration test flaky.** Real mirrors come and go. If reproducible,
   tighten the assertion or bump tolerance. Don't add retries to runtime code
   just to paper over a test.

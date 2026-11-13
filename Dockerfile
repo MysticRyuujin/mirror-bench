@@ -8,7 +8,7 @@ ARG UV_VERSION=0.11.7
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 FROM python:${PYTHON_VERSION}-slim-bookworm AS builder
-ARG VERSION=0.1.0
+ARG VERSION=dev
 
 # Minimal build deps; nothing compiled lands in the final image.
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # ---- Runtime stage -------------------------------------------------------
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
-ARG VERSION=0.1.0
+ARG VERSION=dev
 
 LABEL org.opencontainers.image.title="mirror-bench" \
       org.opencontainers.image.description="Cross-distribution Linux package mirror benchmarking." \

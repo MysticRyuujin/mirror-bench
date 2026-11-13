@@ -2,6 +2,14 @@
   "release-type": "python",
   "bump-minor-pre-major": true,
   "packages": {
-    ".": {}
+    ".": {
+      "extra-files": [
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='linux-mirror-bench')].version"
+        }
+      ]
+    }
   }
 }

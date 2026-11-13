@@ -5,7 +5,7 @@ import io
 import json
 from dataclasses import replace
 
-from mirror_bench import display
+from mirror_bench import display, distro
 from mirror_bench.benchmark.scorer import score_results
 from mirror_bench.models import Score, Weights
 from tests.conftest import make_host
@@ -159,3 +159,11 @@ def test_age_column_and_fields() -> None:
     rows = {r["host"]: r for r in csv.DictReader(io.StringIO(buf.getvalue()))}
     assert rows["day.example.org"]["sync_age_s"] == "82800"
     assert rows["unknown.example.org"]["sync_age_s"] == ""
+
+
+def test_table_title_names_the_release() -> None:
+    scores = score_results([make_probe()], None, Weights())
+    fedora = distro.from_override("fedora")
+    assert "fedora (45)" in display.table_to_string(scores, fedora)
+    arch = distro.from_override("arch")
+    assert "arch (rolling)" in display.table_to_string(scores, arch)

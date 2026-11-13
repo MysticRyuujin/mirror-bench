@@ -29,7 +29,7 @@ def render_bench(
         console.print("[yellow]No mirrors returned usable probes.[/yellow]")
         return
 
-    release = host.codename or host.release_version or "?"
+    release = host.codename or host.release_version or "rolling"
     n = len(scores_list)
     table = Table(
         title=f"mirror-bench — {host.base_distro_id} ({release}) — top {n}",

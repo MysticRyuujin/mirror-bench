@@ -30,6 +30,8 @@ _ALIASES: dict[str, str] = {
     "nobara": "fedora",
 }
 
+DEFAULT_FEDORA_RELEASE = "45"
+
 DEFAULT_CODENAMES: dict[str, str] = {
     "ubuntu": "noble",
     "debian": "trixie",
@@ -99,7 +101,7 @@ def from_override(distro: str, release: str | None = None) -> HostInfo:
         release_version = None
     elif base == "fedora":
         codename = None
-        release_version = release  # discoverer defaults to current stable if None
+        release_version = release or DEFAULT_FEDORA_RELEASE
     else:  # arch: no release concept
         codename = None
         release_version = None

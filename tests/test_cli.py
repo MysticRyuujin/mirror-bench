@@ -265,3 +265,65 @@ def test_bench_keeps_one_row_when_https_and_http_both_work() -> None:
     assert [r["mirror"]["url"] for r in results] == ["https://mir-a.org/debian/"]
     assert results[0]["throughput_bps"] is None
     assert results[0]["throughput_error"] is None
+
+
+@respx.mock
+def test_bench_prefers_https_for_a_mirror_listed_as_http() -> None:
+    respx.get(
+        url__regex=r"https://mirrors\.fedoraproject\.org/mirrorlist\?.*country=us"
+    ).respond(
+        200,
+        text=(
+            "# repo = fedora-45 arch = x86_64 country = us\n"
+            "http://both.example.org/f/os/\n"
+            "http://plain.example.org/f/os/\n"
+        ),
+    )
+    for url in (
+        "https://both.example.org/f/os/repodata/repomd.xml",
+        "http://both.example.org/f/os/repodata/repomd.xml",
+        "http://plain.example.org/f/os/repodata/repomd.xml",
+    ):
+        respx.get(url).respond(206, content=b"x" * 1024)
+    respx.get("https://plain.example.org/f/os/repodata/repomd.xml").mock(
+        side_effect=httpx.ConnectError("no 443")
+    )
+    result = runner.invoke(
+        app,
+        ["bench", "--distro", "fedora", "--country", "US", "--no-throughput", "--json"],
+    )
+    assert result.exit_code == 0, result.output
+    urls = {r["mirror"]["url"] for r in json.loads(result.output)["results"]}
+    assert urls == {"https://both.example.org/f/os/", "http://plain.example.org/f/os/"}
+
+
+@respx.mock
+def test_bench_without_a_tty_writes_no_control_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
+    respx.get("https://mir-a.org/ubuntu/dists/noble/InRelease").respond(
+        206, content=b"x" * 1024
+    )
+    result = runner.invoke(app, ["bench", "--distro", "ubuntu", "--no-throughput"])
+    assert result.exit_code == 0, result.output
+    assert "mir-a.org" in result.stdout
+    assert "\x1b" not in result.stdout
+    assert "\x1b" not in result.stderr
+    assert "latency screen" not in result.stderr
+
+
+@respx.mock
+def test_bench_table_keeps_color_through_a_pipe_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    _mock_ubuntu_fallback_list("https://mir-a.org/ubuntu/\n")
+    respx.get("https://mir-a.org/ubuntu/dists/noble/InRelease").respond(
+        206, content=b"x" * 1024
+    )
+    result = runner.invoke(app, ["bench", "--distro", "ubuntu", "--no-throughput"])
+    assert result.exit_code == 0, result.output
+    assert "\x1b[" in result.stdout
+    assert "\x1b" not in result.stderr

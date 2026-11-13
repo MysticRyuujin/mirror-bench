@@ -2,6 +2,7 @@
 
 import asyncio
 from abc import ABC, abstractmethod
+from dataclasses import replace
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -91,6 +92,26 @@ async def fetch_all(
             _ = tg.create_task(_one(idx, url, params))
 
     return results
+
+
+def with_https_candidates(mirrors: list[Mirror]) -> list[Mirror]:
+    """Add an https:// candidate ahead of each http:// mirror that has none.
+
+    Upstream lists name one scheme for a mirror, and often the http:// one
+    for a host that also serves HTTPS. Probing settles it: a candidate that
+    does not answer drops out, and `scorer.prefer_https` keeps the https://
+    row when both answer.
+    """
+    urls = {m.url for m in mirrors}
+    out: list[Mirror] = []
+    for m in mirrors:
+        if not m.is_https:
+            twin = "https://" + m.url.removeprefix("http://")
+            if twin not in urls:
+                urls.add(twin)
+                out.append(replace(m, url=twin, protocols=("https",)))
+        out.append(m)
+    return out
 
 
 def host_of(url: str) -> str:

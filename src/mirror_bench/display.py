@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+import os
 import shutil
 import sys
 from typing import TYPE_CHECKING, Any
@@ -199,15 +200,18 @@ def _render_width() -> int:
 
 
 def _stdout_console() -> Console:
-    # force_terminal=True renders color even when stdout is a pipe, which is
-    # the default shape inside `docker run` without `-t`. Users who want
-    # plain text (e.g. `docker run … bench > file.txt`) can set NO_COLOR=1;
-    # rich honors that env var regardless of force_terminal.
-    return Console(force_terminal=True, width=_render_width())
+    # Forcing a terminal renders color even when stdout is a pipe, which is
+    # the default shape inside `docker run` without `-t`. NO_COLOR turns the
+    # forcing off: on its own rich only drops color and still writes bold and
+    # italic codes, which is not the plain text a redirect to a file wants.
+    force = None if os.environ.get("NO_COLOR") else True
+    return Console(force_terminal=force, width=_render_width())
 
 
 def stderr_console() -> Console:
-    return Console(stderr=True, force_terminal=True, width=_render_width())
+    # Not forced: a progress bar is animation, and through a pipe or an SSH
+    # session with no TTY it arrives as a stream of control codes.
+    return Console(stderr=True, width=_render_width())
 
 
 def table_to_string(scores: Iterable[Score], host: HostInfo) -> str:

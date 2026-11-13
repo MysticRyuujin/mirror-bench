@@ -13,6 +13,7 @@ from mirror_bench.discovery.base import (
     fetch,
     fetch_all,
     host_of,
+    with_https_candidates,
 )
 from mirror_bench.distro import DEFAULT_CODENAMES
 from mirror_bench.models import HostInfo, Mirror
@@ -86,7 +87,7 @@ class UbuntuDiscoverer(MirrorDiscoverer):
                     protocols=("https" if url.startswith("https://") else "http",),
                 )
             )
-        return mirrors
+        return with_https_candidates(mirrors)
 
     def probe_path(self, host: HostInfo) -> str:
         codename = host.codename or DEFAULT_CODENAMES[self.distro]

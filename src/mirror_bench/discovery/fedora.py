@@ -23,6 +23,7 @@ from mirror_bench.discovery.base import (
     fetch,
     fetch_all,
     host_of,
+    with_https_candidates,
 )
 from mirror_bench.models import HostInfo, Mirror
 
@@ -77,8 +78,10 @@ class FedoraDiscoverer(MirrorDiscoverer):
         base_params: dict[str, str] = {"repo": repo, "arch": host.arch}
 
         if countries:
-            return await _per_country(client, base_params, countries)
-        return await _global_with_country_overlay(client, base_params)
+            mirrors = await _per_country(client, base_params, countries)
+        else:
+            mirrors = await _global_with_country_overlay(client, base_params)
+        return with_https_candidates(mirrors)
 
     def probe_path(self, host: HostInfo) -> str:
         return "repodata/repomd.xml"

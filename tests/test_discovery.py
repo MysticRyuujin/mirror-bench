@@ -7,6 +7,8 @@ import pytest
 import respx
 
 from mirror_bench.discovery import DiscoveryError, get_discoverer
+from mirror_bench.discovery.base import with_https_candidates
+from mirror_bench.models import Mirror
 from tests.conftest import make_host
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -25,7 +27,8 @@ async def test_ubuntu_default_sweep_falls_back_to_full_list(
     discoverer = get_discoverer("ubuntu")
     host = make_host("ubuntu")
     mirrors = await discoverer.discover(client, host)
-    assert len(mirrors) == 3
+    # Two of the three are listed as http:// and gain an https:// candidate.
+    assert len(mirrors) == 5
     hosts = {m.host for m in mirrors}
     assert hosts == {
         "mirror.example-a.org",
@@ -33,7 +36,7 @@ async def test_ubuntu_default_sweep_falls_back_to_full_list(
         "mirror.example-c.org",
     }
     https_count = sum(1 for m in mirrors if m.is_https)
-    assert https_count == 1
+    assert https_count == 3
 
 
 @pytest.mark.asyncio
@@ -68,7 +71,11 @@ async def test_ubuntu_country_filter() -> None:
         discoverer = get_discoverer("ubuntu")
         mirrors = await discoverer.discover(c, make_host("ubuntu"), ("US", "CA"))
     assert {m.country for m in mirrors} == {"US", "CA"}
-    assert len(mirrors) == 2
+    assert [m.url for m in mirrors] == [
+        "https://mirror.us-a.example.org/ubuntu/",
+        "http://mirror.us-a.example.org/ubuntu/",
+        "https://mirror.ca-a.example.org/ubuntu/",
+    ]
 
 
 _DEBIAN_MASTERLIST = "https://mirror-master.debian.org/status/Mirrors.masterlist"
@@ -97,7 +104,7 @@ async def test_ubuntu_drops_lines_that_are_not_urls(client: httpx.AsyncClient) -
     )
     discoverer = get_discoverer("ubuntu")
     mirrors = await discoverer.discover(client, make_host("ubuntu"), ("US",))
-    assert [m.host for m in mirrors] == ["mirror.us-a.example.org"]
+    assert {m.host for m in mirrors} == {"mirror.us-a.example.org"}
 
 
 @pytest.mark.asyncio
@@ -489,3 +496,54 @@ def test_codename_defaults_when_host_has_none() -> None:
     assert get_discoverer("debian").probe_path(make_host("debian", codename=None)) == (
         "dists/trixie/InRelease"
     )
+
+
+def _listed(url: str) -> Mirror:
+    scheme = url.partition("://")[0]
+    return Mirror(url=url, host="h.example.org", country="US", protocols=(scheme,))
+
+
+def test_with_https_candidates() -> None:
+    mirrors = [
+        _listed("http://a.example.org/pub/"),
+        _listed("https://b.example.org/pub/"),
+        # Listed under both schemes already: no second https:// entry.
+        _listed("http://c.example.org/pub/"),
+        _listed("https://c.example.org/pub/"),
+    ]
+    out = with_https_candidates(mirrors)
+    assert [m.url for m in out] == [
+        "https://a.example.org/pub/",
+        "http://a.example.org/pub/",
+        "https://b.example.org/pub/",
+        "http://c.example.org/pub/",
+        "https://c.example.org/pub/",
+    ]
+    candidate = out[0]
+    assert candidate.protocols == ("https",)
+    assert candidate.country == "US"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fedora_http_listing_gains_https_candidate(
+    client: httpx.AsyncClient,
+) -> None:
+    respx.get(
+        "https://mirrors.fedoraproject.org/mirrorlist",
+        params={"repo": "fedora-45", "arch": "x86_64", "country": "us"},
+    ).respond(
+        200,
+        text=(
+            "# repo = fedora-45 arch = x86_64 country = us\n"
+            "http://plain.example.org/fedora/45/os/\n"
+        ),
+    )
+    discoverer = get_discoverer("fedora")
+    mirrors = await discoverer.discover(
+        client, make_host("fedora", codename=None, release_version="45"), ("US",)
+    )
+    assert [(m.url, m.country) for m in mirrors] == [
+        ("https://plain.example.org/fedora/45/os/", "US"),
+        ("http://plain.example.org/fedora/45/os/", "US"),
+    ]

@@ -137,8 +137,9 @@ directly.
 > The image renders a colored, properly-widened table even without `-it`.
 > If you want **rich to use your host terminal's exact width** (and react to
 > resizes), add `-it`; otherwise the image falls back to a sensible 120-col
-> table. Set `NO_COLOR=1` if you'd rather have plain text — e.g. when
-> redirecting to a file.
+> table. Set `NO_COLOR=1` if you'd rather have plain text with no escape
+> codes — e.g. when redirecting to a file. Progress bars show only when
+> stderr is a terminal.
 
 ### Basic invocation
 
@@ -375,6 +376,9 @@ The mirror lists for those distributions cover x86_64 mirrors only.
      multi-record format). The list does not say which sites serve HTTPS, so
      each site is tried as an `https://` and an `http://` candidate.
    - Fedora: `mirrors.fedoraproject.org/mirrorlist?repo=&arch=&country=`.
+   - The Ubuntu and Fedora lists name one scheme for each mirror, often
+     `http://` for a host that also serves HTTPS. Each `http://` entry is
+     also tried as `https://`.
    - Linux Mint: scraped from `linuxmint.com/mirrors.php`.
    - Arch: `archlinux.org/mirrors/status/json/` (JSON, filtered to active
      HTTP and HTTPS entries).

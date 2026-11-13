@@ -310,6 +310,7 @@ async def _run_bench(host: HostInfo, cfg: BenchConfig, *, quiet: bool) -> list[S
             TimeElapsedColumn(),
         )
         console = display.stderr_console()
+        quiet = quiet or not console.is_terminal
 
         if quiet:
             latency_results = await probe.latency_screen(
